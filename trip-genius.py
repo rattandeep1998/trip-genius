@@ -126,7 +126,7 @@ class AmadeusFlightBookingTool(BaseTool):
             # Validate required parameters
             required_params = function_spec['parameters'].get('required', [])
 
-            print(f"Required Parameters: {required_params}")
+            # print(f"Required Parameters: {required_params}")
 
             for param in required_params:
                 if param not in extracted_params:
@@ -155,6 +155,7 @@ class AmadeusFlightBookingTool(BaseTool):
             'originLocationCode': 'City/airport IATA code from which the traveler will depart (e.g., JFK for New York)',
             'destinationLocationCode': 'City/airport IATA code to which the traveler is going (e.g., DEL for Delhi)',
             'departureDate': 'Date of departure in ISO 8601 YYYY-MM-DD format (e.g., 2024-12-30)',
+            'returnDate': 'Date of return in ISO 8601 YYYY-MM-DD format (e.g., 2025-01-05)',
             'adults': 'Number of adult travelers (age 12 or older)',
             'max': 'Maximum number of flight offers to return (must be >= 1, default 250)'
         }
@@ -195,8 +196,9 @@ class AmadeusFlightBookingTool(BaseTool):
         Guidelines:
         - Use uppercase for names
         - Validate email format
-        - Format phone number with country code. Remove + or 00 from the country code
+        - Format phone number without country code. Remove + or 00 from the country code
         - Convert M/F to MALE/FEMALE for gender
+        - If country code is missing, default country code is 1
         - If any detail is missing, leave it as is in the input
         - Do not make up information
         - The output should be in same format as input json
@@ -323,7 +325,7 @@ class AmadeusFlightBookingTool(BaseTool):
         
         # Validate date of birth
         if not extracted_details.get('dateOfBirth'):
-            dob = validate_input("Enter date of birth (YYYY-MM-DD): ")
+            dob = validate_input("Enter date of birth: ")
             # The DOB will be parsed by the LLM call
             extracted_details['dateOfBirth'] = dob
 
@@ -387,6 +389,7 @@ class AmadeusFlightBookingTool(BaseTool):
         originLocationCode: str, 
         destinationLocationCode: str, 
         departureDate: str,
+        returnDate: str,
         travelers_details: List[Dict[str, Any]] = [],
         adults: int = 1,
         max: int = 5,
@@ -429,6 +432,7 @@ class AmadeusFlightBookingTool(BaseTool):
                 'originLocationCode': originLocationCode,
                 'destinationLocationCode': destinationLocationCode,
                 'departureDate': departureDate,
+                'returnDate': returnDate,
                 'adults': adults,
                 'max': max
             }
@@ -524,11 +528,17 @@ def book_flight(query: str):
     """
     flight_tool = AmadeusFlightBookingTool()
     
+    flight_tool_openai = format_tool_to_openai_function(flight_tool)
+
+    # print(f"Flight Tool OpenAI: {json.dumps(flight_tool_openai, indent=2)}")
+
     # Extract flight parameters
     flight_params = AmadeusFlightBookingTool.extract_parameters_with_llm(
         query, 
-        format_tool_to_openai_function(flight_tool)
+        flight_tool_openai
     )
+
+    print(f"Flight Parameters: {json.dumps(flight_params, indent=2)}")
     
     # Prepare travelers details
     travelers_details = []
@@ -554,14 +564,13 @@ def book_flight(query: str):
         'originLocationCode': flight_params.get('originLocationCode', ''),
         'destinationLocationCode': flight_params.get('destinationLocationCode', ''),
         'departureDate': flight_params.get('departureDate', ''),
+        'returnDate': flight_params.get('returnDate', ''),
         'adults': len(travelers_details),
         'max': flight_params.get('max', 5),
         'travelers_details': travelers_details
     }
     
     print("\nFlight Booking Parameters:")
-    print(booking_params)
-
     print(json.dumps(booking_params, indent=2))
     
     # Perform booking (simplified for demonstration)
@@ -578,5 +587,5 @@ def book_flight(query: str):
     
 # Example usage
 if __name__ == "__main__":
-    sample_query = "Book me a flight for Rattandeep Singh from New York to Bengaluru for 20th December 2024."
+    sample_query = "Book me a trip to New York from 20th December 2024 to 5th January 2025. I am currently located at New Delhi."
     book_flight(sample_query)
