@@ -29,7 +29,7 @@ class AmadeusFlightBookingTool(BaseTool):
         1. Carefully analyze the user query to extract values for each parameter
         2. Match parameters exactly as specified in the function specification
         3. Use exact IATA codes for locations if possible. If city names are given, use the main airport code
-        4. Use YYYY-MM-DD format for dates
+        4. Use YYYY-MM-DD format for dates. If the year is not given, assume current year for the date.
 
         Output Instructions:
         - Return a valid string with extracted parameter value
@@ -160,6 +160,75 @@ class AmadeusFlightBookingTool(BaseTool):
         }
         return descriptions.get(param, 'No description available')
     
+    def parse_extracted_details(self, traveler_details: Dict[str, Any]) -> Dict[str, Any]:
+        system_prompt = """
+        You are an expert at extracting structured traveler details.
+        Parse and convert the traveler details values to the required format.
+
+        Extract the following details about a traveler:
+        1. Full Name (First and Last Name)
+        2. Date of Birth
+        3. Gender
+        4. Email Address
+        5. Phone Number
+        
+        Output Format (JSON):
+        {{
+            dateOfBirth: YYYY-MM-DD,
+            name: {{
+                firstName: FIRST_NAME,
+                lastName: LAST_NAME
+            }},
+            gender: MALE/FEMALE,
+            contact: {{
+                emailAddress: valid_email@example.com,
+                phones: [
+                    {{
+                        deviceType: MOBILE,
+                        countryCallingCode: COUNTRY_CODE,
+                        number: PHONE_NUMBER
+                    }}
+                ]
+            }}
+        }}
+        
+        Guidelines:
+        - Use uppercase for names
+        - Validate email format
+        - Format phone number with country code. Remove + or 00 from the country code
+        - Convert M/F to MALE/FEMALE for gender
+        - If any detail is missing, leave it as is in the input
+        - Do not make up information
+        - The output should be in same format as input json
+        """
+        
+        # Initialize the LLM
+        llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+        
+        # Create the prompt template
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", "{traveler_input}")
+        ])
+        
+        # print(f"Prompt Template: {prompt}")
+
+        # Create the chain
+        chain = prompt | llm
+        
+        traveler_details = json.dumps(traveler_details)
+
+        try:            
+            parsed_traveller_details = chain.invoke({"traveler_input": traveler_details})
+            parsed_traveller_details = json.loads(parsed_traveller_details.content)
+
+            print(f"Parsed Traveler Details: {json.dumps(parsed_traveller_details, indent=2)}")
+
+            return parsed_traveller_details
+        except Exception as e:
+            print(f"Error parsing traveler details: {e}")
+            return traveler_details
+
     def extract_traveler_details(self, traveler_input: str = None) -> Dict[str, Any]:
         """
         Extract and validate traveler details interactively.
@@ -215,10 +284,10 @@ class AmadeusFlightBookingTool(BaseTool):
         # Create the prompt template
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
-            ("human", traveler_input)
+            ("human", "{traveler_input}")
         ])
         
-        print(f"Prompt Template: {prompt}")
+        # print(f"Prompt Template: {prompt}")
 
         # Create the chain
         chain = prompt | llm
@@ -229,9 +298,6 @@ class AmadeusFlightBookingTool(BaseTool):
             try:
                 print(f"Traveller Details Input: {traveler_input}")
                 response = chain.invoke({"traveler_input": traveler_input})
-
-                print(f"Response: {response}")
-
                 extracted_details = json.loads(response.content)
             except Exception as e:
                 extracted_details = {}
@@ -257,22 +323,29 @@ class AmadeusFlightBookingTool(BaseTool):
         
         # Validate date of birth
         if not extracted_details.get('dateOfBirth'):
-            while True:
-                dob = validate_input("Enter date of birth (YYYY-MM-DD): ")
-                try:
-                    datetime.strptime(dob, "%Y-%m-%d")
-                    extracted_details['dateOfBirth'] = dob
-                    break
-                except ValueError:
-                    print("Invalid date format. Use YYYY-MM-DD.")
+            dob = validate_input("Enter date of birth (YYYY-MM-DD): ")
+            # The DOB will be parsed by the LLM call
+            extracted_details['dateOfBirth'] = dob
+
+            # while True:
+            #     dob = validate_input("Enter date of birth (YYYY-MM-DD): ")
+            #     try:
+            #         datetime.strptime(dob, "%Y-%m-%d")
+            #         extracted_details['dateOfBirth'] = dob
+            #         break
+            #     except ValueError:
+            #         print("Invalid date format. Use YYYY-MM-DD.")
         
         # Validate gender
         if not extracted_details.get('gender'):
-            gender = validate_input(
-                "Enter gender (Male/Female): ", 
-                lambda g: g.upper() in ['MALE', 'FEMALE']
-            ).upper()
+            gender = validate_input("Enter gender: ")
             extracted_details['gender'] = gender
+
+            # gender = validate_input(
+            #     "Enter gender (Male/Female): ", 
+            #     lambda g: g.upper() in ['MALE', 'FEMALE']
+            # ).upper()
+            # extracted_details['gender'] = gender
         
         # Validate email
         if not extracted_details.get('contact') or not extracted_details['contact'].get('emailAddress'):
@@ -304,6 +377,9 @@ class AmadeusFlightBookingTool(BaseTool):
                 "number": number
             }]
         
+        print(f"Traveler details before parsing: {json.dumps(extracted_details, indent=2)}")
+        extracted_details = self.parse_extracted_details(extracted_details)
+
         return extracted_details
     
     def _run(
@@ -502,5 +578,5 @@ def book_flight(query: str):
     
 # Example usage
 if __name__ == "__main__":
-    sample_query = "Book me a flight from New York to Bengaluru."
+    sample_query = "Book me a flight for Rattandeep Singh from New York to Bengaluru for 20th December 2024."
     book_flight(sample_query)
