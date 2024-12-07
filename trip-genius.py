@@ -18,6 +18,46 @@ class AmadeusFlightBookingTool(BaseTool):
     name: str = "amadeus_flight_booking"
     description: str = "Books flight offers from the Amadeus API with dynamic traveler information."
     
+    @staticmethod
+    def extract_param_llm_call(param: str, input_value: str) -> str:
+        system_prompt = f"""
+        You are an expert at extracting structured parameters for a flight booking API function.
+
+        Extract the value of the parameter '{param}' from the give user input.
+
+        Extraction Guidelines:
+        1. Carefully analyze the user query to extract values for each parameter
+        2. Match parameters exactly as specified in the function specification
+        3. Use exact IATA codes for locations if possible. If city names are given, use the main airport code
+        4. Use YYYY-MM-DD format for dates
+
+        Output Instructions:
+        - Return a valid string with extracted parameter value
+        - Ensure type compatibility
+        - If unsure about a parameter, return empty string
+        """
+
+        # Create the prompt template
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", "{input_value}")
+        ])
+
+        # Initialize the LLM
+        llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+        
+        # Create the chain
+        chain = prompt | llm
+        
+        # Generate the response
+        response = chain.invoke({
+            "input_value": input_value
+        })
+
+        print(f"Extracted Parameter '{param}': {response.content}")
+
+        return response.content
+
     @classmethod
     def extract_parameters_with_llm(
         cls, 
@@ -90,9 +130,9 @@ class AmadeusFlightBookingTool(BaseTool):
 
             for param in required_params:
                 if param not in extracted_params:
-                    value = input(f"Please provide a value for '{param}': ").strip()
-                    if value:
-                        extracted_params[param] = value
+                    input_value = input(f"Please provide a value for '{param}': ").strip()
+                    if input_value:
+                        extracted_params[param] = cls.extract_param_llm_call(param, input_value)
                     else:
                         raise ValueError(f"Missing required parameter: {param} - No value provided.")
                         # raise ValueError(f"Missing required parameter: {param}")
@@ -245,11 +285,6 @@ class AmadeusFlightBookingTool(BaseTool):
                 extracted_details['contact'] = {}
 
             extracted_details['contact']['emailAddress'] = email
-
-            # extracted_details['contact'] = {
-            #     'emailAddress': email,
-            #     'phones': []
-            # }
         
         # Validate phone number
         if not extracted_details['contact'].get('phones'):
@@ -449,6 +484,8 @@ def book_flight(query: str):
     }
     
     print("\nFlight Booking Parameters:")
+    print(booking_params)
+
     print(json.dumps(booking_params, indent=2))
     
     # Perform booking (simplified for demonstration)
@@ -465,5 +502,5 @@ def book_flight(query: str):
     
 # Example usage
 if __name__ == "__main__":
-    sample_query = "Book me a flight from New York to Delhi"
+    sample_query = "Book me a flight from New York to Bengaluru."
     book_flight(sample_query)
