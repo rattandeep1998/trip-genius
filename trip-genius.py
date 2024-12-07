@@ -518,7 +518,37 @@ class AmadeusFlightBookingTool(BaseTool):
         self,
     ) -> Dict[str, Any]:
         return {}
+
+def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hotel_booking_result: Dict[str, Any]):
+    system_prompt = """
+    You are an expert at converting structured booking results into human-readable format.
+    You have the results from flight and hotel bookings.
+    Your task is to extract only the relevant details and output them in a concise format.
+    """
+        
+    # Initialize the LLM
+    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+        
+    # Create the prompt template
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", "{flight_booking_result} {hotel_booking_result}")
+    ])
+        
+    # Create the chain
+    chain = prompt | llm
     
+    try:
+        response = chain.invoke({
+            "flight_booking_result": json.dumps(flight_booking_result),
+            "hotel_booking_result": json.dumps(hotel_booking_result)
+        })
+
+        print(f"Human Readable Result: {response.content}")
+    except Exception as e:
+        print(f"Error converting to human-readable result: {e}")
+
+
 def book_flight(query: str):
     """
     Main flight booking process.
@@ -576,6 +606,7 @@ def book_flight(query: str):
     # Perform booking (simplified for demonstration)
     flight_booking_result = flight_tool._run(**booking_params)
     
+    hotel_booking_result = {}
     # hotel_booking_result = flight_tool._run_hotel_booking(**booking_params)
 
     # Display booking details
@@ -584,6 +615,8 @@ def book_flight(query: str):
 
     # print("\nHotel Booking Details:")
     # print(json.dumps(hotel_booking_result, indent=2))
+
+    # convert_to_human_readable_result(flight_booking_result, hotel_booking_result)
     
 # Example usage
 if __name__ == "__main__":
