@@ -390,6 +390,7 @@ class AmadeusFlightBookingTool(BaseTool):
         destinationLocationCode: str, 
         departureDate: str,
         returnDate: str,
+        card_details: str = "",
         travelers_details: List[Dict[str, Any]] = [],
         adults: int = 1,
         max: int = 5,
@@ -516,8 +517,296 @@ class AmadeusFlightBookingTool(BaseTool):
 
     def _run_hotel_booking(
         self,
+        originLocationCode: str,
+        destinationLocationCode: str,
+        departureDate: str,
+        returnDate: str,
+        adults: int,
+        travelers_details: List[Dict[str, Any]],
+        card_details: str,
+        max: int = 5,
     ) -> Dict[str, Any]:
+        """
+        Execute the API call to retrieve and book hotel offers.
+        """
+        # Retrieve API credentials from environment variables
+        client_id = os.getenv('AMADEUS_CLIENT_ID')
+        client_secret = os.getenv('AMADEUS_CLIENT_SECRET')
+
+        if not client_id or not client_secret:
+            raise ValueError("Amadeus API credentials not found. Set AMADEUS_CLIENT_ID and AMADEUS_CLIENT_SECRET.")
+
+        # First, get an access token
+        token_url = 'https://test.api.amadeus.com/v1/security/oauth2/token'
+        token_data = {
+            'grant_type': 'client_credentials',
+            'client_id': client_id,
+            'client_secret': client_secret
+        }
+
+        try:
+            # Get access token
+            token_response = requests.post(token_url, data=token_data)
+            token_response.raise_for_status()
+            access_token = token_response.json()['access_token']
+
+            # Prepare API call
+            api_url = 'https://test.api.amadeus.com/v1/reference-data/locations/hotels/by-city'
+            headers = {
+                'Authorization': f'Bearer {access_token}'
+            }
+
+            params = {
+                'cityCode': destinationLocationCode
+            }
+
+            # Make the API call
+            response = requests.get(api_url, headers=headers, params=params)
+            response.raise_for_status()
+
+            results = response.json()
+
+            if "data" not in results or len(results["data"]) == 0:
+                print("No hotels found.")
+                return {"error": "No hotels found."}
+
+            hotelIdsData = [hotel["hotelId"] for hotel in results["data"][:30]] #taking hotel ids
+
+
+
+            hotelIds = ",".join(hotelIdsData)
+
+            pricing_url = "https://test.api.amadeus.com/v3/shopping/hotel-offers"
+
+            params = {
+                'hotelIds': hotelIds,
+                'adults':len(travelers_details),
+                'checkInDate':departureDate,
+                'checkOutDate': returnDate,
+                'roomQuantity':1,
+                'paymentPolicy':'NONE',
+                'bestRateOnly':True
+            }
+
+            pricing_response = requests.get(pricing_url, headers=headers, params=params)
+
+            pricing_response.raise_for_status()
+            pricing_data = pricing_response.json()
+            #print("Hotel Offer Pricing Results:")
+            #print(json.dumps(pricing_data, indent=2))
+
+            if "data" not in pricing_data  or len(pricing_data["data"]) == 0 or "hotel" not in pricing_data["data"][0]:
+                print("No priced hotel offers found.")
+                return {"error": "No priced hotel offers found."}
+
+            hotelOfferPriceData = pricing_data["data"][0]
+            hotelOfferPriceId = hotelOfferPriceData["offers"][0]["id"]
+
+            #print(f"Hotel Offer Price Data: {json.dumps(hotelOfferPriceData, indent=2)}")
+
+            def guest_reference(traveler):
+              return {
+                  "tid": int(traveler["id"]),
+                  "title":  "MR" if traveler["gender"] == "MALE" else "MS",
+                  "firstName" : traveler["name"]["firstName"],
+                  "lastName" : traveler["name"]["lastName"],
+                  "phone": traveler["contact"]["phones"][0]["number"],
+                  "email": traveler["contact"]["emailAddress"]
+              }
+
+            guestDetails = [guest_reference(traveler) for traveler in travelers_details]
+
+
+            orders_url = "https://test.api.amadeus.com/v2/booking/hotel-orders"
+
+            payload = {
+                "data": {
+                    "type": "hotel-order",
+                    "roomAssociations":[{
+                        "guestReferences": [
+                            {
+                                "guestReference": str(len(guestDetails))
+                            }
+                            ],
+                        "hotelOfferId": hotelOfferPriceId
+                    }],
+                    "travelAgent": {
+                        "contact": {
+                            "email": "bob.smith@email.com"
+                            }
+                        },
+
+                    "guests": guestDetails,
+                    "payment": {
+                        "method": "CREDIT_CARD",
+                        "paymentCard": {
+                            "paymentCardInfo": card_details
+                            }
+                        }
+                    }
+                }
+
+            order_response = requests.post(orders_url, headers=headers, json=payload)
+
+            order_response.raise_for_status()
+            order_data = order_response.json()
+
+            return order_data
+
+        except requests.RequestException as e:
+            return {"error": str(e)}
+
         return {}
+
+    def _run_itinerary(
+        self,
+        originLocationCode: str,
+        destinationLocationCode: str,
+        departureDate: str,
+        returnDate: str,
+        adults: int,
+        travelers_details: List[Dict[str, Any]],
+        card_details: str,
+        max: int = 5
+        ) -> Dict[str, Any]:
+        """
+        Execute the API call to retrieve and book hotel offers.
+        """
+
+        system_prompt = """
+        You are an expert at planning trips in the most optimized way with best suggestions for the  given city.
+
+        Guidelines:
+        - Suggest top restaurants
+        - Tourist places
+        - Activities
+        - Optimized travel plan
+
+        return the valid json of the entire itinerary with a field optimized_travel_plan.
+        """
+
+        # Create a user query based on the destination and other details
+        query = f"Plan an optimized trip itinerary for {adults} adults in {destinationLocationCode} starting from {departureDate} to {returnDate}."
+
+        # Initialize the LLM
+        llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+
+        # Create the prompt template
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", query)
+        ])
+
+        # Extract itinerary
+        try:
+            chain = prompt | llm
+            response = chain.invoke({"query": query})
+
+            itinerary = json.loads(response.content)
+            #print(f"Extracted itinerary: {json.dumps(itinerary, indent=2)}")
+            return itinerary
+        except Exception as e:
+            print(f"Error extracting itinerary: {e}")
+            return {}
+
+
+
+
+def extract_card_details_from_query(query: str) -> Dict[str, str]:
+    """
+    Extract credit card details from the query using an LLM.
+
+    Args:
+        query (str): The user-provided natural language query.
+
+    Returns:
+        Dict[str, str]: Extracted card details.
+    """
+    system_prompt = """
+    You are an expert at extracting structured credit card details from natural language input.
+
+    Extract the following details about a credit card:
+    1. Card Vendor Code (e.g., VI for Visa, MC for MasterCard)
+    2. Card Number
+    3. Expiry Date in YYYY-MM format
+    4. Card Holder's Full Name
+
+    Output Format (JSON):
+    {{
+        "vendorCode": "VI/MC/AMEX",
+        "cardNumber": "CARD_NUMBER",
+        "expiryDate": "YYYY-MM",
+        "holderName": "FULL_NAME"
+    }}
+
+    Guidelines:
+    - Use the vendor code format: VI (Visa), MC (MasterCard), AMEX (American Express)
+    - Validate card number length (between 13 and 19 digits).
+    - Validate expiry date format as YYYY-MM.
+    - Do not guess missing details; set them to null.
+    """
+
+    # Initialize the LLM
+    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+
+    # Create the prompt template
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", query)
+    ])
+
+    # Extract card details from the query
+    try:
+        chain = prompt | llm
+
+        response = chain.invoke({"query": query})
+        card_details = json.loads(response.content)
+        print(f"Extracted Card Details from Query: {json.dumps(card_details, indent=2)}")
+        return card_details
+    except Exception as e:
+        print(f"Error extracting card details: {e}")
+        return {
+            "vendorCode": None,
+            "cardNumber": None,
+            "expiryDate": None,
+            "holderName": None
+        }
+
+
+def collect_card_details(missing_details: Dict[str, str]) -> Dict[str, str]:
+    """
+    Collect missing credit card details interactively from the user.
+
+    Args:
+        missing_details (Dict[str, str]): Card details extracted from the query.
+
+    Returns:
+        Dict[str, str]: Complete card details.
+    """
+    print("\nEnter Missing Credit Card Details:")
+
+    while not missing_details.get("vendorCode"):
+        missing_details["vendorCode"] = input("Card Vendor (e.g., VI for Visa, MC for MasterCard): ").upper()
+
+    if not missing_details.get("cardNumber"):
+        card_number = input("Card Number:(13-19 digits) ").strip()
+        while not card_number.isdigit() or len(card_number) < 13 or len(card_number) > 19:
+            card_number = input("Card Number:(13-19 digits) ").strip()
+        missing_details["cardNumber"] = card_number
+
+    if not missing_details.get("expiryDate"):
+        expiry_date = input("Card Expiry Date (YYYY-MM): ").strip()
+        try:
+            datetime.strptime(expiry_date, "%Y-%m")
+            missing_details["expiryDate"] = expiry_date
+        except ValueError:
+            raise ValueError("Invalid expiry date format. Use YYYY-MM.")
+
+    if not missing_details.get("holderName"):
+        missing_details["holderName"] = input("Card Holder Name: ").strip()
+
+    return missing_details
+
 
 def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hotel_booking_result: Dict[str, Any]):
     system_prompt = """
@@ -577,6 +866,7 @@ def book_flight(query: str):
     traveler_details = flight_tool.extract_traveler_details(query)
     traveler_details['id'] = '1'
     travelers_details.append(traveler_details)
+
     
     # Additional travelers if needed
     while True:
@@ -589,6 +879,12 @@ def book_flight(query: str):
         additional_traveler_details['id'] = str(len(travelers_details) + 1)
         travelers_details.append(additional_traveler_details)
     
+
+    # Collect credit card details
+    card_details = extract_card_details_from_query(query)
+    complete_card_details = collect_card_details(card_details)
+
+
     # Combine parameters for booking
     booking_params = {
         'originLocationCode': flight_params.get('originLocationCode', ''),
@@ -597,7 +893,8 @@ def book_flight(query: str):
         'returnDate': flight_params.get('returnDate', ''),
         'adults': len(travelers_details),
         'max': flight_params.get('max', 5),
-        'travelers_details': travelers_details
+        'travelers_details': travelers_details,
+        'card_details': complete_card_details
     }
     
     print("\nFlight Booking Parameters:")
@@ -606,15 +903,19 @@ def book_flight(query: str):
     # Perform booking (simplified for demonstration)
     flight_booking_result = flight_tool._run(**booking_params)
     
-    hotel_booking_result = {}
-    # hotel_booking_result = flight_tool._run_hotel_booking(**booking_params)
+    hotel_booking_result = flight_tool._run_hotel_booking(**booking_params)
+
+    itinerary_result = flight_tool._run_itinerary(**booking_params)
 
     # Display booking details
     print("\nBooking Details:")
     print(json.dumps(flight_booking_result, indent=2))
 
-    # print("\nHotel Booking Details:")
-    # print(json.dumps(hotel_booking_result, indent=2))
+    print("\nHotel Booking Details:")
+    print(json.dumps(hotel_booking_result, indent=2))
+    
+    # print("\Itinerary:")
+    # print(json.dumps(itinerary_result, indent=2))
 
     # convert_to_human_readable_result(flight_booking_result, hotel_booking_result)
     
