@@ -812,7 +812,7 @@ def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hote
     system_prompt = """
     You are an expert at converting structured booking results into human-readable format.
     You have the results from flight and hotel bookings.
-    Your task is to extract only the relevant details and output them in a concise format.
+    Your task is to extract only the relevant details and output them in a concise format in a single sentence.
     """
         
     # Initialize the LLM
@@ -882,7 +882,7 @@ def book_flight(query: str):
 
     # Collect credit card details
     card_details = extract_card_details_from_query(query)
-    complete_card_details = collect_card_details(card_details)
+    # complete_card_details = collect_card_details(card_details)
 
 
     # Combine parameters for booking
@@ -894,7 +894,7 @@ def book_flight(query: str):
         'adults': len(travelers_details),
         'max': flight_params.get('max', 5),
         'travelers_details': travelers_details,
-        'card_details': complete_card_details
+        # 'card_details': complete_card_details
     }
     
     print("\nFlight Booking Parameters:")
@@ -903,9 +903,13 @@ def book_flight(query: str):
     # Perform booking (simplified for demonstration)
     flight_booking_result = flight_tool._run(**booking_params)
     
-    hotel_booking_result = flight_tool._run_hotel_booking(**booking_params)
+    hotel_booking_result = {}
 
-    itinerary_result = flight_tool._run_itinerary(**booking_params)
+    # hotel_booking_result = flight_tool._run_hotel_booking(**booking_params)
+
+    itinerary_result = {}
+
+    # itinerary_result = flight_tool._run_itinerary(**booking_params)
 
     # Display booking details
     print("\nBooking Details:")
@@ -914,12 +918,24 @@ def book_flight(query: str):
     print("\nHotel Booking Details:")
     print(json.dumps(hotel_booking_result, indent=2))
     
-    # print("\Itinerary:")
-    # print(json.dumps(itinerary_result, indent=2))
+    print("\Itinerary:")
+    print(json.dumps(itinerary_result, indent=2))
 
-    # convert_to_human_readable_result(flight_booking_result, hotel_booking_result)
+    convert_to_human_readable_result(flight_booking_result, hotel_booking_result)
+
+    return {
+        "booking_params": booking_params,
+        "flight_booking_result": flight_booking_result,
+        "hotel_booking_result": hotel_booking_result,
+        "itinerary_result": itinerary_result
+    }
     
 # Example usage
 if __name__ == "__main__":
     sample_query = "Book me a trip to New York from 20th December 2024 to 5th January 2025. I am currently located at New Delhi."
-    book_flight(sample_query)
+    
+    results = book_flight(sample_query)
+
+    booking_params = results['booking_params']
+    print("\nFlight Booking Results:")
+    print(json.dumps(booking_params, indent=2))
