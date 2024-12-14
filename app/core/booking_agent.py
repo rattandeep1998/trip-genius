@@ -36,6 +36,7 @@ class AmadeusFlightBookingTool(BaseTool):
         2. Match parameters exactly as specified in the function specification
         3. Use exact IATA codes for locations if possible. If city names are given, use the main airport code
         4. Use YYYY-MM-DD format for dates. If the year is not given, assume current year for the date.
+        5. If travel plan preference is not detected or not provided, return the value as tourism
 
         Output Instructions:
         - Return a valid string with extracted parameter value
@@ -99,6 +100,7 @@ class AmadeusFlightBookingTool(BaseTool):
         9. If return date is not provided, then default returnDate to null
         10. If number of adults is not provided, then default adults to 1
         11. If max number of flight offers is not provided, then default max to 5
+        12, Currency code is the currency of the source location user is travelling
 
         Output Instructions:
         - Return a valid JSON object with extracted parameters
@@ -142,11 +144,8 @@ class AmadeusFlightBookingTool(BaseTool):
         for param in required_params:
             while param not in extracted_params:
                 input_value = input(f"Please provide a value for '{param}' - {cls._get_parameter_description(param)}: ").strip()
-                
-                if input_value:
-                    extracted_params[param] = cls.extract_param_llm_call(param, input_value, verbose)
-                else:
-                    print(f"'{param}' is a required parameter. Please provide a value.")
+                extracted_params[param] = cls.extract_param_llm_call(param, input_value, verbose)
+                #print(f"'{param}' is a required parameter. Please provide a value.")
 
         return extracted_params
     
@@ -158,7 +157,11 @@ class AmadeusFlightBookingTool(BaseTool):
             'departureDate': 'Date of departure in ISO 8601 YYYY-MM-DD format (e.g., 2024-12-30)',
             'returnDate': 'Date of return in ISO 8601 YYYY-MM-DD format (e.g., 2025-01-05)',
             'adults': 'Number of adult travelers (age 12 or older)',
-            'max': 'Maximum number of flight offers to return (must be >= 1, default 250)'
+            'max': 'Maximum number of flight offers to return (must be >= 1, default 250)',
+            'travelPlanPreference': 'Preference for itinerary (Take from user input, leave empty if not specified explicitly)',
+            'country':'Country code of the destination location(e.g., US for New York). Donot leave empty',
+            'city':'Full city name of the destination city(e.g., New York City for New York or NYC).  Donot leave empty',
+            'currencyCode':'Country currency of the source location(originLocationCode e.g., USD for New York). Donot leave empty',
         }
         return descriptions.get(param, 'No description available')
     
@@ -384,6 +387,10 @@ class AmadeusFlightBookingTool(BaseTool):
         destinationLocationCode: str, 
         departureDate: str,
         returnDate: str,
+        travelPlanPreference: str,
+        country:str,
+        city:str,
+        currencyCode:str,
         travelers_details: List[Dict[str, Any]] = [],
         adults: int = 1,
         max: int = 5,
@@ -425,7 +432,8 @@ class AmadeusFlightBookingTool(BaseTool):
             'departureDate': departureDate,
             'returnDate': returnDate,
             'adults': adults,
-            'max': max
+            'max': max,
+            'currencyCode':currencyCode,
         }
         flight_api_calls += 1
         try:
@@ -441,7 +449,31 @@ class AmadeusFlightBookingTool(BaseTool):
                 print("No flight offers found.")
             return {"error": "No flight offers found.", "_flight_api_calls": flight_api_calls, "_flight_api_success": flight_api_success}
 
-        flightOfferData = results["data"][0]
+        flightData = results["data"]
+        mappings = results["dictionaries"]["carriers"]
+        flight_details = []
+        for i, flight in enumerate(flightData):
+          flight_detail = {
+            "departure": flight["itineraries"][0]["segments"][0]["departure"]["iataCode"]+" at: "+flight["itineraries"][0]["segments"][0]["departure"]["at"],
+            "arrival": flight["itineraries"][0]["segments"][-1]["arrival"]["iataCode"]+" at: "+flight["itineraries"][0]["segments"][-1]["arrival"]["at"],
+            "return departure": flight["itineraries"][1]["segments"][0]["departure"]["iataCode"]+" at: "+flight["itineraries"][1]["segments"][0]["departure"]["at"],
+            "return arrival": flight["itineraries"][1]["segments"][-1]["arrival"]["iataCode"]+" at: "+flight["itineraries"][1]["segments"][-1]["arrival"]["at"],
+            "airlines": mappings[flight["itineraries"][0]["segments"][0]["carrierCode"]],
+            "return airlines": mappings[flight["itineraries"][1]["segments"][0]["carrierCode"]],
+            "price": flight["price"]["grandTotal"],
+            "currency": flight["price"]["currency"],
+            }
+          flight_details.append(flight_detail)
+          print(f"Flight {i + 1}: {flight_detail}")
+        
+        preferred_flight = input("Enter the number of your preferred flight to book(by default, it is the first cheapest flight): ")
+        if not preferred_flight.isdigit() or int(preferred_flight) < 1 or int(preferred_flight) > len(flight_details):
+          preferred_flight = 1
+        else:
+          preferred_flight = int(preferred_flight)
+
+        flightOfferData = flightData[preferred_flight - 1]
+
 
         # Pricing
         pricing_url = "https://test.api.amadeus.com/v1/shopping/flight-offers/pricing"
@@ -501,6 +533,10 @@ class AmadeusFlightBookingTool(BaseTool):
         departureDate: str,
         returnDate: str,
         adults: int,
+        travelPlanPreference: str,
+        country:str,
+        city:str,
+        currencyCode:str,
         travelers_details: List[Dict[str, Any]],
         max: int = 5,
     ) -> Dict[str, Any]:
@@ -562,9 +598,10 @@ class AmadeusFlightBookingTool(BaseTool):
             'adults':len(travelers_details),
             'checkInDate':departureDate,
             'checkOutDate': returnDate,
-            'roomQuantity':1,
             'paymentPolicy':'NONE',
-            'bestRateOnly':True
+            'bestRateOnly':True,
+            'includeClosed':False,
+            'currency':currencyCode
         }
 
         hotel_api_calls += 1
@@ -579,9 +616,25 @@ class AmadeusFlightBookingTool(BaseTool):
         if "data" not in pricing_data  or len(pricing_data["data"]) == 0 or "hotel" not in pricing_data["data"][0]:
             print("No priced hotel offers found.")
             return {"error": "No priced hotel offers found.", "_hotel_api_calls": hotel_api_calls, "_hotel_api_success": hotel_api_success}
+ 
+        hotels = pricing_data["data"]
+        hotelOfferPriceData = sorted(hotels, key=lambda h: float(h["offers"][0]["price"]["total"]))[:5]
+        for idx, hotel in enumerate(hotelOfferPriceData, start=1):
+          offer = hotel["offers"][0]
+          print(
+            f"Hotel {idx}. {hotel['hotel']['name']} - {offer['price']['total']} {offer['price']['currency']} "
+            f"(Check-in: {offer['checkInDate']}, Check-out: {offer['checkOutDate']})"
+          )
+        
+        preferred_hotel = input("Enter the number of your preferred hotel to book(by default, it is the first cheapest hotel): ")
+        if not preferred_hotel.isdigit() or int(preferred_hotel) < 1 or int(preferred_hotel) > len(hotelOfferPriceData):
+          preferred_hotel = 1
+        else:
+          preferred_hotel = int(preferred_hotel)
+        
+        hotelOfferPriceId = hotelOfferPriceData[preferred_hotel-1]["offers"][0]["id"]
 
-        hotelOfferPriceData = pricing_data["data"][0]
-        hotelOfferPriceId = hotelOfferPriceData["offers"][0]["id"]
+
 
         def guest_reference(traveler):
             return {
@@ -648,45 +701,125 @@ class AmadeusFlightBookingTool(BaseTool):
         departureDate: str,
         returnDate: str,
         adults: int,
+        travelPlanPreference: str,
+        country:str,
+        city:str,
+        currencyCode:str,
         travelers_details: List[Dict[str, Any]],
         max: int = 5,
         verbose: bool = True,
         ) -> Dict[str, Any]:
         global llm_calls_count
 
-        system_prompt = """
-        You are an expert at planning trips in the most optimized way with best suggestions for the  given city.
-
-        Guidelines:
-        - Suggest top restaurants
-        - Tourist places
-        - Activities
-        - Optimized travel plan
-
-        return the valid json of the entire itinerary with a field optimized_travel_plan.
+        """
+        Execute the API call to retrieve and provide itinerary.
         """
 
-        query = f"Plan an optimized trip itinerary for {adults} adults in {destinationLocationCode} starting from {departureDate} to {returnDate}."
+        itinerary_api_calls = 0
+        itinerary_api_success = 0
 
-        llm = ChatOpenAI(model=run_itinerary_model, temperature=0)
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("human", query)
-        ])
-        chain = prompt | llm
+        # Create a user query based on the destination and other details
+        # Retrieve API credentials from environment variables
+        client_id = userdata.get('AMADEUS_CLIENT_ID')
+        client_secret = userdata.get('AMADEUS_CLIENT_SECRET')
+
+        if not client_id or not client_secret:
+            raise ValueError("Amadeus API credentials not found. Set AMADEUS_CLIENT_ID and AMADEUS_CLIENT_SECRET.")
+
+        # First, get an access token
+        token_url = 'https://test.api.amadeus.com/v1/security/oauth2/token'
+        token_data = {
+            'grant_type': 'client_credentials',
+            'client_id': client_id,
+            'client_secret': client_secret
+        }
 
         try:
-            # Invoke the LLM
-            llm_calls_count += 1
-            response = chain.invoke({"query": query})
-            itinerary = json.loads(response.content)
+            # Get access token
+            token_response = requests.post(token_url, data=token_data)
+            token_response.raise_for_status()
+            access_token = token_response.json()['access_token']
+
+            # Prepare API call
+            headers = {
+                'Authorization': f'Bearer {access_token}'
+            }
+
+            get_coords_url = "https://test.api.amadeus.com/v1/reference-data/locations/cities"
+            params = {
+                'countryCode': country,
+                'keyword':city,
+                'max':1
+            }
+            itinerary_api_calls+=1
+            try:
+              get_coords_response = requests.get(get_coords_url, headers=headers, params=params)
+              get_coords_response.raise_for_status()
+              get_coords_response_data = get_coords_response.json()
+              itinerary_api_success += 1
+              if "data" not in get_coords_response_data  or len(get_coords_response_data["data"]) == 0 or "geoCode" not in get_coords_response_data["data"][0]:
+                data = ""
+              else:
+                activities_url = "https://test.api.amadeus.com/v1/shopping/activities"
+                itinerary_api_calls+=1
+                try:
+                  activities_response = requests.get(activities_url, headers=headers, params= get_coords_response_data["data"][0]["geoCode"])
+                  activities_response.raise_for_status()
+                  activities_data = activities_response.json()
+                  itinerary_api_success += 1
+                  if "data" not in activities_data  or len(activities_data["data"]) == 0:
+                    data = ""
+                  else:
+                    data = json.dumps(activities_data['data'][:50])
+                    data = data.replace('{', '{{')
+                    data = data.replace('}', '}}')
+                except requests.RequestException as e:
+                  print(f"error: {str(e)}, _itinerary_api_calls: {itinerary_api_calls}, _itinerary_api_success: {itinerary_api_success}")
+            except requests.RequestException as e:
+               print(f"error: {str(e)}, _itinerary_api_calls: {itinerary_api_calls}, _itinerary_api_success: {itinerary_api_success}")
+        # except requests.RequestException as e:
+        #   print(f"error: {str(e)}, _itinerary_api_calls: {itinerary_api_calls}, _itinerary_api_success: {itinerary_api_success}")
+            
+            system_prompt = f"""
+            You are an expert at planning trips in the most optimized way with best suggestions for the given city.
+
+            Here are few suggestions retrieved from the web {data}
+
+            Guidelines:
+            - Give priority to the information provided and combine your knowledge, if nothing provided use your knowledge alone to plan
+            - Need a day to day plan
+            - Suggest top restaurants
+            - Tourist places
+            - Activities
+            - Optimized travel plan
+
+            Return the valid JSON of the entire itinerary as a paragraph as a field optimized_travel_plan with detailed 
+            day wise plan incorporating all the guidelines.
+            """
+
+            query = f"Plan an optimized trip itinerary for {adults} adults in {destinationLocationCode} starting from {departureDate} to {returnDate} prioritizing user preference: {travelPlanPreference} in the plan."
+            
+
+            # Initialize the LLM
+            llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+
+            # Create the prompt template
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", system_prompt),
+                 ("human", "{query}")
+                 ])
+            
+            chain = prompt | llm
+            response = chain.invoke({
+                "query": query
+            })
+            itinerary = response.content
             return itinerary
         except Exception as e:
-            if verbose:
-                print(f"Error extracting itinerary: {e}")
-            return {}
+          print(f"Error extracting itinerary: {e}")
+        return ""
 
-def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hotel_booking_result: Dict[str, Any], itinerary_result: Dict[str, Any], verbose: bool = True):
+def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hotel_booking_result: Dict[str, Any], itinerary_result: str, verbose: bool = True):
     global llm_calls_count
 
     system_prompt = """
@@ -711,9 +844,7 @@ def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hote
             "flight_booking_result": json.dumps(flight_booking_result),
             "hotel_booking_result": json.dumps(hotel_booking_result),
         })
-
-        travel_plan = itinerary_result.get("itinerary", {}).get("optimized_travel_plan", "")
-        complete_summary = response.content + " \nTravel Plan:\n" + travel_plan
+        complete_summary = response.content + " \nTravel Plan:\n" + itinerary_result
         
         if verbose:
             print(f"Human Readable Result: {complete_summary}")
@@ -723,7 +854,7 @@ def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hote
             print(f"Error converting to human-readable result: {e}")
 
 
-def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool = True, use_real_api: bool = True) -> Dict[str, Any]:
+def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool = False, use_real_api: bool = True) -> Dict[str, Any]:
     flight_tool = AmadeusFlightBookingTool()
     flight_tool_openai = convert_to_openai_function(flight_tool)
 
@@ -767,7 +898,11 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
         'returnDate': flight_params.get('returnDate', ''),
         'adults': len(travelers_details),
         'max': flight_params.get('max', 5),
-        'travelers_details': travelers_details
+        'travelers_details': travelers_details,
+        'travelPlanPreference': flight_params.get('travelPlanPreference', ''),
+        'country':  flight_params.get('country', ''),
+        'city':  flight_params.get('city', ''),
+        'currencyCode':  flight_params.get('currencyCode', '')
     }
     
     if verbose:
@@ -798,7 +933,7 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
         print("\Itinerary:")
         print(json.dumps(itinerary_result, indent=2))
 
-    convert_to_human_readable_result(flight_booking_result, hotel_booking_result, itinerary_result, verbose)
+    convert_to_human_readable_result(flight_booking_result, hotel_booking_result, itinerary_result, verbose=True)
 
     flight_api_calls = flight_booking_result.get("_flight_api_calls", 0)
     flight_api_success = flight_booking_result.get("_flight_api_success", 0)
