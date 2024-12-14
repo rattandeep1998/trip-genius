@@ -117,27 +117,28 @@ class AmadeusFlightBookingTool(BaseTool):
         
         try:
             extracted_params = json.loads(response.content)
-            
-            if not interactive_mode:
-                return extracted_params
-            
-            required_params = function_spec['parameters'].get('required', [])
 
-            for param in required_params:
-                if param not in extracted_params:
-                    input_value = input(f"Please provide a value for '{param}': ").strip()
-                    if input_value:
-                        extracted_params[param] = cls.extract_param_llm_call(param, input_value, verbose)
-                    else:
-                        raise ValueError(f"Missing required parameter: {param} - No value provided.")
-            
-            return extracted_params
-        
         except json.JSONDecodeError:
-            return {
+            extracted_params = {
                 "adults": 1,
                 "max": 5
             }
+        
+        if not interactive_mode:
+            return extracted_params
+        
+        required_params = function_spec['parameters'].get('required', [])
+
+        for param in required_params:
+            while param not in extracted_params:
+                input_value = input(f"Please provide a value for '{param}' - {cls._get_parameter_description(param)}: ").strip()
+                
+                if input_value:
+                    extracted_params[param] = cls.extract_param_llm_call(param, input_value, verbose)
+                else:
+                    print(f"'{param}' is a required parameter. Please provide a value.")
+
+        return extracted_params
     
     @staticmethod
     def _get_parameter_description(param: str) -> str:
