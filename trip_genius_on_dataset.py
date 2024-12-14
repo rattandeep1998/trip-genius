@@ -1,5 +1,6 @@
 import pandas as pd
 import json
+import time
 from bookings_script import initiate_bookings
 
 def flatten_json(nested_json, parent_key="", sep="."):
@@ -52,20 +53,37 @@ def process_bookings(input_csv, output_csv, short_dataset=False):
     
     # If short_dataset is True, use a subset of the data
     if short_dataset:
-        df = df.head(1)
+        df = df.head(2)
     
     results = []
     total_match_percentage = 0
     total_entries = len(df)
+    flight_api_calls = 0
+    flight_api_success = 0
+    hotel_api_calls = 0
+    hotel_api_success = 0
+    llm_calls_count = 0
+    total_time = 0
     
     for index, row in df.iterrows():
-        print(f"Processing entry {index + 1} of {total_entries}...")
         input_text = row['Input']
         baseline_params = json.loads(row['Parameters'])
         
-        # Generate booking parameters using the initiate_bookings function
-        results_dict = initiate_bookings(input_text, interactive_mode=False, verbose=False)
+        # Measure the time taken to run the initiate_bookings function
+        start_time = time.time()
+        results_dict = initiate_bookings(input_text, interactive_mode=False, verbose=False, use_real_api = True)
+        end_time = time.time()
+        execution_time = end_time - start_time
+        total_time += execution_time
+        
         generated_params = results_dict.get('booking_params', {})
+        
+        # Collect API call data
+        flight_api_calls += results_dict.get('flight_api_calls', 0)
+        flight_api_success += results_dict.get('flight_api_success', 0)
+        hotel_api_calls += results_dict.get('hotel_api_calls', 0)
+        hotel_api_success += results_dict.get('hotel_api_success', 0)
+        llm_calls_count += results_dict.get('llm_calls', 0)
         
         # Compare the generated parameters with the baseline parameters
         match_percentage = compare_parameters(generated_params, baseline_params)
@@ -76,10 +94,14 @@ def process_bookings(input_csv, output_csv, short_dataset=False):
             "Input": input_text,
             "Baseline Parameters": json.dumps(baseline_params),
             "Generated Parameters": json.dumps(generated_params),
-            "Match Percentage": f"{match_percentage:.2f}%"
+            "Match Percentage": f"{match_percentage:.2f}%",
+            "Flight API Calls": results_dict.get('flight_api_calls', 0),
+            "Flight API Success": results_dict.get('flight_api_success', 0),
+            "Hotel API Calls": results_dict.get('hotel_api_calls', 0),
+            "Hotel API Success": results_dict.get('hotel_api_success', 0),
+            "LLM Calls": results_dict.get('llm_calls', 0),
+            "Execution Time (s)": f"{execution_time:.2f}"
         })
-
-        print(f"Match Percentage: {match_percentage:.2f}%\n")
     
     # Create a DataFrame with the results
     results_df = pd.DataFrame(results)
@@ -87,13 +109,25 @@ def process_bookings(input_csv, output_csv, short_dataset=False):
     # Save the results to an output CSV file
     results_df.to_csv(output_csv, index=False)
     
-    # Calculate and display the overall match percentage
+    # Calculate and display the overall match percentage and average execution time
     overall_match_percentage = total_match_percentage / total_entries if total_entries > 0 else 0
+    average_execution_time = total_time / total_entries if total_entries > 0 else 0
     print(f"Overall Match Percentage: {overall_match_percentage:.2f}%")
+    print(f"Total Flight API Calls: {flight_api_calls}")
+    print(f"Successful Flight API Calls: {flight_api_success}")
+    print(f"Total Hotel API Calls: {hotel_api_calls}")
+    print(f"Successful Hotel API Calls: {hotel_api_success}")
+    print(f"Total LLM Calls: {llm_calls_count}")
+    print(f"Average Execution Time: {average_execution_time:.2f} seconds")
 
 # Example usage
 if __name__ == "__main__":
-    input_csv_path = "./data/travel_booking_dataset.csv"
-    output_csv_path = "./data/booking_results.csv"
+    # input_csv_path = "./data/travel_booking_dataset.csv"
+    # output_csv_path = "./data/booking_results.csv"
+
+    input_csv_path = "./data/travel_booking_dataset_short.csv"
+    output_csv_path = "./data/booking_results_short.csv"
     
     process_bookings(input_csv_path, output_csv_path, short_dataset=True)
+
+    # results_dict = initiate_bookings(input_text, interactive_mode=False, verbose=False, use_real_api = True)
