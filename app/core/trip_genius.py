@@ -1,4 +1,4 @@
-from bookings_script import initiate_bookings
+from booking_agent import initiate_bookings
 import json
 
 # Example usage
