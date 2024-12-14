@@ -19,7 +19,7 @@ class AmadeusFlightBookingTool(BaseTool):
     description: str = "Books flight offers from the Amadeus API with dynamic traveler information."
     
     @staticmethod
-    def extract_param_llm_call(param: str, input_value: str) -> str:
+    def extract_param_llm_call(param: str, input_value: str, verbose: bool = True) -> str:
         system_prompt = f"""
         You are an expert at extracting structured parameters for a flight booking API function.
 
@@ -54,15 +54,18 @@ class AmadeusFlightBookingTool(BaseTool):
             "input_value": input_value
         })
 
-        print(f"Extracted Parameter '{param}': {response.content}")
+        if verbose:
+            print(f"Extracted Parameter '{param}': {response.content}")
 
         return response.content
 
     @classmethod
     def extract_parameters_with_llm(
         cls, 
-        query: str, 
-        function_spec: Dict[str, Any]
+        query: str,
+        function_spec: Dict[str, Any],
+        interactive_mode: bool = True,
+        verbose: bool = True,
     ) -> Dict[str, Any]:
         """
         Extract API parameters using LLM based on function specification.
@@ -123,6 +126,10 @@ class AmadeusFlightBookingTool(BaseTool):
             # Try to parse the LLM response as JSON
             extracted_params = json.loads(response.content)
             
+            # When it is run for complete dataset, do not prompt for missing parameters
+            if not interactive_mode:
+                return extracted_params
+            
             # Validate required parameters
             required_params = function_spec['parameters'].get('required', [])
 
@@ -132,7 +139,7 @@ class AmadeusFlightBookingTool(BaseTool):
                 if param not in extracted_params:
                     input_value = input(f"Please provide a value for '{param}': ").strip()
                     if input_value:
-                        extracted_params[param] = cls.extract_param_llm_call(param, input_value)
+                        extracted_params[param] = cls.extract_param_llm_call(param, input_value, verbose)
                     else:
                         raise ValueError(f"Missing required parameter: {param} - No value provided.")
                         # raise ValueError(f"Missing required parameter: {param}")
@@ -161,7 +168,7 @@ class AmadeusFlightBookingTool(BaseTool):
         }
         return descriptions.get(param, 'No description available')
     
-    def parse_extracted_details(self, traveler_details: Dict[str, Any]) -> Dict[str, Any]:
+    def parse_extracted_details(self, traveler_details: Dict[str, Any], verbose: bool = True) -> Dict[str, Any]:
         system_prompt = """
         You are an expert at extracting structured traveler details.
         Parse and convert the traveler details values to the required format.
@@ -224,14 +231,16 @@ class AmadeusFlightBookingTool(BaseTool):
             parsed_traveller_details = chain.invoke({"traveler_input": traveler_details})
             parsed_traveller_details = json.loads(parsed_traveller_details.content)
 
-            print(f"Parsed Traveler Details: {json.dumps(parsed_traveller_details, indent=2)}")
+            if verbose:
+                print(f"Parsed Traveler Details: {json.dumps(parsed_traveller_details, indent=2)}")
 
             return parsed_traveller_details
         except Exception as e:
-            print(f"Error parsing traveler details: {e}")
+            if verbose:
+                print(f"Error parsing traveler details: {e}")
             return traveler_details
 
-    def extract_traveler_details(self, traveler_input: str = None) -> Dict[str, Any]:
+    def extract_traveler_details(self, traveler_input: str = None, interactive_mode: bool = True, verbose: bool = True) -> Dict[str, Any]:
         """
         Extract and validate traveler details interactively.
         
@@ -298,15 +307,21 @@ class AmadeusFlightBookingTool(BaseTool):
         extracted_details = {}
         if traveler_input:
             try:
-                print(f"Traveller Details Input: {traveler_input}")
+                if verbose:
+                    print(f"Traveller Details Input: {traveler_input}")
                 response = chain.invoke({"traveler_input": traveler_input})
                 extracted_details = json.loads(response.content)
             except Exception as e:
                 extracted_details = {}
                 print(f"Error extracting traveler details: {e}")
         
-        print(f"Extracted Traveler Details: {json.dumps(extracted_details, indent=2)}")
+        if verbose:
+            print(f"Extracted Traveler Details: {json.dumps(extracted_details, indent=2)}")
 
+        # If not is iterative mode and function is run on the entire dataset, then return the extracted parameters without asking for human input
+        if not interactive_mode:
+            return extracted_details
+        
         # Interactive validation and completion
         def validate_input(prompt_text, validator=None):
             while True:
@@ -379,8 +394,10 @@ class AmadeusFlightBookingTool(BaseTool):
                 "number": number
             }]
         
-        print(f"Traveler details before parsing: {json.dumps(extracted_details, indent=2)}")
-        extracted_details = self.parse_extracted_details(extracted_details)
+        if verbose:
+            print(f"Traveler details before parsing: {json.dumps(extracted_details, indent=2)}")
+        
+        extracted_details = self.parse_extracted_details(extracted_details, verbose)
 
         return extracted_details
     
@@ -393,6 +410,7 @@ class AmadeusFlightBookingTool(BaseTool):
         travelers_details: List[Dict[str, Any]] = [],
         adults: int = 1,
         max: int = 5,
+        verbose: bool = True,
     ) -> Dict[str, Any]:
         """
         Execute the API call to retrieve and book flight offers.
@@ -444,7 +462,8 @@ class AmadeusFlightBookingTool(BaseTool):
             results = response.json()
 
             if "data" not in results or len(results["data"]) == 0:
-                print("No flight offers found.")
+                if verbose:
+                    print("No flight offers found.")
                 return {"error": "No flight offers found."}
 
             flightOfferData = results["data"][0]  # taking the first flight offer
@@ -463,21 +482,26 @@ class AmadeusFlightBookingTool(BaseTool):
             pricing_response = requests.post(pricing_url, headers=headers, json=payload)
             pricing_response.raise_for_status()
             pricing_data = pricing_response.json()
-            print("Flight Offer Pricing Results:")
-            print(json.dumps(pricing_data, indent=2))
+
+            if verbose:
+                print("Flight Offer Pricing Results:")
+                print(json.dumps(pricing_data, indent=2))
 
             if "data" not in pricing_data or "flightOffers" not in pricing_data["data"] or len(pricing_data["data"]["flightOffers"]) == 0:
-                print("No priced flight offers found.")
+                if verbose:
+                    print("No priced flight offers found.")
                 return {"error": "No priced flight offers found."}
             
             flightOfferPriceData = pricing_data["data"]["flightOffers"][0]
 
-            print(f"Flight Offer Price Data: {json.dumps(flightOfferPriceData, indent=2)}")
+            if verbose:
+                print(f"Flight Offer Price Data: {json.dumps(flightOfferPriceData, indent=2)}")
             
             orders_url = "https://test.api.amadeus.com/v1/booking/flight-orders"
 
             # flightOfferPriceData1 = {"type":"flight-offer","id":"1","source":"GDS","instantTicketingRequired":False,"nonHomogeneous":False,"paymentCardRequired":False,"lastTicketingDate":"2024-12-19","itineraries":[{"segments":[{"departure":{"iataCode":"CDG","at":"2024-12-19T10:00:00"},"arrival":{"iataCode":"FRA","at":"2024-12-19T14:30:00"},"carrierCode":"6X","number":"501","aircraft":{"code":"744"},"operating":{"carrierCode":"6X"},"duration":"PT4H30M","id":"5","numberOfStops":0,"co2Emissions":[{"weight":71,"weightUnit":"KG","cabin":"ECONOMY"}]},{"departure":{"iataCode":"FRA","at":"2024-12-19T18:10:00"},"arrival":{"iataCode":"ICN","at":"2024-12-20T11:25:00"},"carrierCode":"6X","number":"9744","aircraft":{"code":"744"},"operating":{"carrierCode":"6X"},"duration":"PT9H15M","id":"6","numberOfStops":0,"co2Emissions":[{"weight":404,"weightUnit":"KG","cabin":"ECONOMY"}]}]}],"price":{"currency":"EUR","total":"270.36","base":"134.00","fees":[{"amount":"0.00","type":"SUPPLIER"},{"amount":"0.00","type":"TICKETING"},{"amount":"0.00","type":"FORM_OF_PAYMENT"}],"grandTotal":"270.36","billingCurrency":"EUR"},"pricingOptions":{"fareType":["PUBLISHED"],"includedCheckedBagsOnly":True},"validatingAirlineCodes":["6X"],"travelerPricings":[{"travelerId":"1","fareOption":"STANDARD","travelerType":"ADULT","price":{"currency":"EUR","total":"135.18","base":"67.00","taxes":[{"amount":"4.51","code":"IZ"},{"amount":"3.00","code":"O4"},{"amount":"13.13","code":"QX"},{"amount":"21.89","code":"FR"},{"amount":"25.65","code":"RA"}],"refundableTaxes":"68.18"},"fareDetailsBySegment":[{"segmentId":"5","cabin":"ECONOMY","fareBasis":"YCNV1","class":"Y","includedCheckedBags":{"quantity":9}},{"segmentId":"6","cabin":"ECONOMY","fareBasis":"YCNV1","class":"Y","includedCheckedBags":{"quantity":9}}]},{"travelerId":"2","fareOption":"STANDARD","travelerType":"ADULT","price":{"currency":"EUR","total":"135.18","base":"67.00","taxes":[{"amount":"4.51","code":"IZ"},{"amount":"3.00","code":"O4"},{"amount":"13.13","code":"QX"},{"amount":"21.89","code":"FR"},{"amount":"25.65","code":"RA"}],"refundableTaxes":"68.18"},"fareDetailsBySegment":[{"segmentId":"5","cabin":"ECONOMY","fareBasis":"YCNV1","class":"Y","includedCheckedBags":{"quantity":9}},{"segmentId":"6","cabin":"ECONOMY","fareBasis":"YCNV1","class":"Y","includedCheckedBags":{"quantity":9}}]}]}
-            print(f"Traveler Details: {json.dumps(travelers_details, indent=2)}")
+            if verbose:
+                print(f"Traveler Details: {json.dumps(travelers_details, indent=2)}")
 
             payload = {
                 "data": {
@@ -490,26 +514,18 @@ class AmadeusFlightBookingTool(BaseTool):
                 }
             }
             
-            print(f"Flight Order Payload: {json.dumps(payload, indent=2)}")
+            if verbose:
+                print(f"Flight Order Payload: {json.dumps(payload, indent=2)}")
 
             order_response = requests.post(orders_url, headers=headers, json=payload)
             order_response.raise_for_status()
             order_data = order_response.json()
 
-            print("Flight Order Results:")
-            print(json.dumps(order_data, indent=2))
+            if verbose:
+                print("Flight Order Results:")
+                print(json.dumps(order_data, indent=2))
 
             return order_data
-        
-            # Placeholder for actual API call implementation
-            return {
-                "flight_details": {
-                    "origin": originLocationCode,
-                    "destination": destinationLocationCode,
-                    "date": departureDate
-                },
-                "travelers": travelers_details
-            }
         
         except requests.RequestException as e:
             return {"error": str(e)}
@@ -570,8 +586,6 @@ class AmadeusFlightBookingTool(BaseTool):
 
             hotelIdsData = [hotel["hotelId"] for hotel in results["data"][:30]] #taking hotel ids
 
-
-
             hotelIds = ",".join(hotelIdsData)
 
             pricing_url = "https://test.api.amadeus.com/v3/shopping/hotel-offers"
@@ -590,17 +604,13 @@ class AmadeusFlightBookingTool(BaseTool):
 
             pricing_response.raise_for_status()
             pricing_data = pricing_response.json()
-            #print("Hotel Offer Pricing Results:")
-            #print(json.dumps(pricing_data, indent=2))
-
+            
             if "data" not in pricing_data  or len(pricing_data["data"]) == 0 or "hotel" not in pricing_data["data"][0]:
                 print("No priced hotel offers found.")
                 return {"error": "No priced hotel offers found."}
 
             hotelOfferPriceData = pricing_data["data"][0]
             hotelOfferPriceId = hotelOfferPriceData["offers"][0]["id"]
-
-            #print(f"Hotel Offer Price Data: {json.dumps(hotelOfferPriceData, indent=2)}")
 
             def guest_reference(traveler):
               return {
@@ -667,7 +677,8 @@ class AmadeusFlightBookingTool(BaseTool):
         returnDate: str,
         adults: int,
         travelers_details: List[Dict[str, Any]],
-        max: int = 5
+        max: int = 5,
+        verbose: bool = True,
         ) -> Dict[str, Any]:
         """
         Execute the API call to retrieve and book hotel offers.
@@ -706,13 +717,11 @@ class AmadeusFlightBookingTool(BaseTool):
             #print(f"Extracted itinerary: {json.dumps(itinerary, indent=2)}")
             return itinerary
         except Exception as e:
-            print(f"Error extracting itinerary: {e}")
+            if verbose:
+                print(f"Error extracting itinerary: {e}")
             return {}
 
-
-
-
-def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hotel_booking_result: Dict[str, Any], itinerary_result: Dict[str, Any]):
+def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hotel_booking_result: Dict[str, Any], itinerary_result: Dict[str, Any], verbose: bool = True):
     system_prompt = """
     You are an expert at converting structured booking results into human-readable format.
     You have the results from flight and hotel bookings.
@@ -741,13 +750,15 @@ def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hote
         travel_plan = itinerary_result.get("itinerary", "").get("optimized_travel_plan", "")
         complete_summary = response.content + " \nTravel Plan:\n" + travel_plan
         
-        print(f"Human Readable Result: {complete_summary}")
+        if verbose:
+            print(f"Human Readable Result: {complete_summary}")
         
     except Exception as e:
-        print(f"Error converting to human-readable result: {e}")
+        if verbose:
+            print(f"Error converting to human-readable result: {e}")
 
 
-def initiate_bookings(query: str):
+def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool = True):
 
     flight_tool = AmadeusFlightBookingTool()
     
@@ -758,30 +769,34 @@ def initiate_bookings(query: str):
     # Extract flight parameters
     flight_params = AmadeusFlightBookingTool.extract_parameters_with_llm(
         query, 
-        flight_tool_openai
+        flight_tool_openai,
+        interactive_mode,
+        verbose
     )
 
-    print(f"Flight Parameters: {json.dumps(flight_params, indent=2)}")
+    if verbose: 
+        print(f"Flight Parameters: {json.dumps(flight_params, indent=2)}")
     
     # Prepare travelers details
     travelers_details = []
     
     # Extract traveler details from the initial query
-    traveler_details = flight_tool.extract_traveler_details(query)
+    traveler_details = flight_tool.extract_traveler_details(query, interactive_mode, verbose)
     traveler_details['id'] = '1'
     travelers_details.append(traveler_details)
 
-    
-    # Additional travelers if needed
-    while True:
-        add_more = input("Do you want to add another traveler? (yes/no): ").lower()
-        if add_more != 'yes':
-            break
-        
-        additional_traveler = input("Enter additional traveler details: ")
-        additional_traveler_details = flight_tool.extract_traveler_details(additional_traveler)
-        additional_traveler_details['id'] = str(len(travelers_details) + 1)
-        travelers_details.append(additional_traveler_details)
+    # Run this code only to prompt for additional travelers. Do not run this code when running on the entire dataset
+    if interactive_mode:
+        # Additional travelers if needed
+        while True:
+            add_more = input("Do you want to add another traveler? (yes/no): ").lower()
+            if add_more != 'yes':
+                break
+            
+            additional_traveler = input("Enter additional traveler details: ")
+            additional_traveler_details = flight_tool.extract_traveler_details(additional_traveler, interactive_mode, verbose)
+            additional_traveler_details['id'] = str(len(travelers_details) + 1)
+            travelers_details.append(additional_traveler_details)
 
 
     # Combine parameters for booking
@@ -795,11 +810,12 @@ def initiate_bookings(query: str):
         'travelers_details': travelers_details
     }
     
-    print("\nFlight Booking Parameters:")
-    print(json.dumps(booking_params, indent=2))
+    if verbose:
+        print("\nFlight Booking Parameters:")
+        print(json.dumps(booking_params, indent=2))
     
     # Perform booking (simplified for demonstration)
-    flight_booking_result = flight_tool._run(**booking_params)
+    flight_booking_result = flight_tool._run(**booking_params, verbose=verbose)
     
     # hotel_booking_result = {}
 
@@ -807,19 +823,20 @@ def initiate_bookings(query: str):
 
     itinerary_result = {}
 
-    itinerary_result = flight_tool._run_itinerary(**booking_params)
+    itinerary_result = flight_tool._run_itinerary(**booking_params, verbose=verbose)
 
     # Display booking details
-    print("\nBooking Details:")
-    print(json.dumps(flight_booking_result, indent=2))
+    if verbose:
+        print("\nBooking Details:")
+        print(json.dumps(flight_booking_result, indent=2))
 
-    print("\nHotel Booking Details:")
-    print(json.dumps(hotel_booking_result, indent=2))
-    
-    print("\Itinerary:")
-    print(json.dumps(itinerary_result, indent=2))
+        print("\nHotel Booking Details:")
+        print(json.dumps(hotel_booking_result, indent=2))
+        
+        print("\Itinerary:")
+        print(json.dumps(itinerary_result, indent=2))
 
-    convert_to_human_readable_result(flight_booking_result, hotel_booking_result, itinerary_result)
+    convert_to_human_readable_result(flight_booking_result, hotel_booking_result, itinerary_result, verbose)
 
     return {
         "booking_params": booking_params,
