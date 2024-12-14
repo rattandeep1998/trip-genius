@@ -100,7 +100,7 @@ class AmadeusFlightBookingTool(BaseTool):
         9. If return date is not provided, then default returnDate to null
         10. If number of adults is not provided, then default adults to 1
         11. If max number of flight offers is not provided, then default max to 5
-        12, Currency code is the currency of the source location user is travelling
+        12. Currency code is the currency of the source location user is travelling
 
         Output Instructions:
         - Return a valid JSON object with extracted parameters
@@ -267,7 +267,7 @@ class AmadeusFlightBookingTool(BaseTool):
         }}
         
         Guidelines:
-        - Do not make up information
+        - Do not make up any information and default to null if unsure
         - Use uppercase for names
         - Validate email format
         - Format phone number with country code if present
@@ -718,10 +718,8 @@ class AmadeusFlightBookingTool(BaseTool):
         itinerary_api_calls = 0
         itinerary_api_success = 0
 
-        # Create a user query based on the destination and other details
-        # Retrieve API credentials from environment variables
-        client_id = userdata.get('AMADEUS_CLIENT_ID')
-        client_secret = userdata.get('AMADEUS_CLIENT_SECRET')
+        client_id = os.getenv('AMADEUS_CLIENT_ID')
+        client_secret = os.getenv('AMADEUS_CLIENT_SECRET')
 
         if not client_id or not client_secret:
             raise ValueError("Amadeus API credentials not found. Set AMADEUS_CLIENT_ID and AMADEUS_CLIENT_SECRET.")
@@ -854,7 +852,7 @@ def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hote
             print(f"Error converting to human-readable result: {e}")
 
 
-def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool = False, use_real_api: bool = True) -> Dict[str, Any]:
+def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool = True, use_real_api: bool = True) -> Dict[str, Any]:
     flight_tool = AmadeusFlightBookingTool()
     flight_tool_openai = convert_to_openai_function(flight_tool)
 
@@ -933,7 +931,7 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
         print("\Itinerary:")
         print(json.dumps(itinerary_result, indent=2))
 
-    convert_to_human_readable_result(flight_booking_result, hotel_booking_result, itinerary_result, verbose=True)
+    convert_to_human_readable_result(flight_booking_result, hotel_booking_result, itinerary_result, verbose)
 
     flight_api_calls = flight_booking_result.get("_flight_api_calls", 0)
     flight_api_success = flight_booking_result.get("_flight_api_success", 0)
