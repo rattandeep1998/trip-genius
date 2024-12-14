@@ -78,7 +78,7 @@ class AmadeusFlightBookingTool(BaseTool):
         ])
 
         system_prompt = f"""
-        You are an expert at extracting structured parameters for a flight booking API function.
+        You are an expert at extracting structured parameters for a flight booking API function. Extract the values of the parameters from the given user query and strictly do not make up any information.
 
         API Function Specification Details:
         Name: {function_spec.get('name', 'Unknown')}
@@ -90,11 +90,16 @@ class AmadeusFlightBookingTool(BaseTool):
         Extraction Guidelines:
         1. Carefully analyze the user query to extract values for each parameter
         2. Match parameters exactly as specified in the function specification
-        3. Use exact IATA codes for locations if possible. If city names are given, use the main airport code
-        4. Use YYYY-MM-DD format for dates
-        5. Default to 1 adult traveler if not specified
-        6. Identify key flight details: origin, destination, date
-        
+        3. Do not make up any information and default to null if unsure
+        4. Use exact IATA codes for locations if possible. If city names are given, use the main airport code
+        5. Use YYYY-MM-DD format for dates
+        6. If origin location is not provided, then default originLocationCode to null
+        7. If destination location is not provided, then default destinationLocationCode to null
+        8. If departure date is not provided, then default departureDate to null
+        9. If return date is not provided, then default returnDate to null
+        10. If number of adults is not provided, then default adults to 1
+        11. If max number of flight offers is not provided, then default max to 5
+
         Output Instructions:
         - Return a valid JSON object with extracted parameters
         - Only include parameters you can confidently extract
@@ -127,6 +132,11 @@ class AmadeusFlightBookingTool(BaseTool):
         if not interactive_mode:
             return extracted_params
         
+        # Remove extracted parameters whose value is null
+        extracted_params = {k: v for k, v in extracted_params.items() if v is not None}
+
+        print(f"Extracted Parameters: {json.dumps(extracted_params, indent=2)}")
+
         required_params = function_spec['parameters'].get('required', [])
 
         for param in required_params:
