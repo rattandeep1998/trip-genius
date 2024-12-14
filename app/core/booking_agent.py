@@ -9,6 +9,7 @@ from langchain.tools import BaseTool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.utils.function_calling import convert_to_openai_function
+from helpers import get_parameter_description, extract_single_param_value_llm, extract_parameters_with_llm
 
 extract_parameters_model = "gpt-3.5-turbo"
 run_itinerary_model = "gpt-3.5-turbo"
@@ -22,149 +23,7 @@ class AmadeusFlightBookingTool(BaseTool):
     
     name: str = "amadeus_flight_booking"
     description: str = "Books flight offers from the Amadeus API with dynamic traveler information."
-    
-    @staticmethod
-    def extract_param_llm_call(param: str, input_value: str, verbose: bool = True) -> str:
-        global llm_calls_count
-        system_prompt = f"""
-        You are an expert at extracting structured parameters for a flight booking API function.
 
-        Extract the value of the parameter '{param}' from the give user input.
-
-        Extraction Guidelines:
-        1. Carefully analyze the user query to extract values for each parameter
-        2. Match parameters exactly as specified in the function specification
-        3. Use exact IATA codes for locations if possible. If city names are given, use the main airport code
-        4. Use YYYY-MM-DD format for dates. If the year is not given, assume current year for the date.
-        5. If travel plan preference is not detected or not provided, return the value as tourism
-
-        Output Instructions:
-        - Return a valid string with extracted parameter value
-        - Ensure type compatibility
-        - If unsure about a parameter, return empty string
-        """
-
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("human", "{input_value}")
-        ])
-
-        llm = ChatOpenAI(model=extract_parameters_model, temperature=0)        
-        chain = prompt | llm
-        
-        llm_calls_count += 1
-        response = chain.invoke({
-            "input_value": input_value
-        })
-
-        if verbose:
-            print(f"Extracted Parameter '{param}': {response.content}")
-
-        return response.content
-
-    @classmethod
-    def extract_parameters_with_llm(
-        cls, 
-        query: str,
-        function_spec: Dict[str, Any],
-        interactive_mode: bool = True,
-        verbose: bool = True,
-    ) -> Dict[str, Any]:
-        global llm_calls_count
-        parameters_details = "\n\t".join([
-            f"- {param}: {cls._get_parameter_description(param)} "
-            f"(Type: {details.get('type', 'unknown')}, "
-            f"Required: {'Yes' if param in function_spec['parameters'].get('required', []) else 'No'})"
-            for param, details in function_spec['parameters']['properties'].items()
-        ])
-
-        system_prompt = f"""
-        You are an expert at extracting structured parameters for a flight booking API function. Extract the values of the parameters from the given user query and strictly do not make up any information.
-
-        API Function Specification Details:
-        Name: {function_spec.get('name', 'Unknown')}
-        Description: {function_spec.get('description', 'No description')}
-
-        Parameters:
-        {parameters_details}
-
-        Extraction Guidelines:
-        1. Carefully analyze the user query to extract values for each parameter
-        2. Match parameters exactly as specified in the function specification
-        3. Do not make up any information and default to null if unsure
-        4. Use exact IATA codes for locations if possible. If city names are given, use the main airport code
-        5. Use YYYY-MM-DD format for dates
-        6. If origin location is not provided, then default originLocationCode to null
-        7. If destination location is not provided, then default destinationLocationCode to null
-        8. If departure date is not provided, then default departureDate to null
-        9. If return date is not provided, then default returnDate to null
-        10. If number of adults is not provided, then default adults to 1
-        11. If max number of flight offers is not provided, then default max to 5
-        12. Currency code is the currency of the source location user is travelling
-
-        Output Instructions:
-        - Return a valid JSON object with extracted parameters
-        - Only include parameters you can confidently extract
-        - Ensure type compatibility
-        - If unsure about a parameter, do not include it
-        """
-
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("human", "{query}")
-        ])
-
-        llm = ChatOpenAI(model=extract_parameters_model, temperature=0)
-        chain = prompt | llm
-        
-        llm_calls_count += 1
-        response = chain.invoke({
-            "query": query
-        })
-        
-        try:
-            extracted_params = json.loads(response.content)
-
-        except json.JSONDecodeError:
-            extracted_params = {
-                "adults": 1,
-                "max": 5
-            }
-        
-        if not interactive_mode:
-            return extracted_params
-        
-        # Remove extracted parameters whose value is null
-        extracted_params = {k: v for k, v in extracted_params.items() if v is not None}
-
-        print(f"Extracted Parameters: {json.dumps(extracted_params, indent=2)}")
-
-        required_params = function_spec['parameters'].get('required', [])
-
-        for param in required_params:
-            while param not in extracted_params:
-                input_value = input(f"Please provide a value for '{param}' - {cls._get_parameter_description(param)}: ").strip()
-                extracted_params[param] = cls.extract_param_llm_call(param, input_value, verbose)
-                #print(f"'{param}' is a required parameter. Please provide a value.")
-
-        return extracted_params
-    
-    @staticmethod
-    def _get_parameter_description(param: str) -> str:
-        descriptions = {
-            'originLocationCode': 'City/airport IATA code from which the traveler will depart (e.g., JFK for New York)',
-            'destinationLocationCode': 'City/airport IATA code to which the traveler is going (e.g., DEL for Delhi)',
-            'departureDate': 'Date of departure in ISO 8601 YYYY-MM-DD format (e.g., 2024-12-30)',
-            'returnDate': 'Date of return in ISO 8601 YYYY-MM-DD format (e.g., 2025-01-05)',
-            'adults': 'Number of adult travelers (age 12 or older)',
-            'max': 'Maximum number of flight offers to return (must be >= 1, default 250)',
-            'travelPlanPreference': 'Preference for itinerary (Take from user input, leave empty if not specified explicitly)',
-            'country':'Country code of the destination location(e.g., US for New York). Donot leave empty',
-            'city':'Full city name of the destination city(e.g., New York City for New York or NYC).  Donot leave empty',
-            'currencyCode':'Country currency of the source location(originLocationCode e.g., USD for New York). Donot leave empty',
-        }
-        return descriptions.get(param, 'No description available')
-    
     def parse_extracted_details(self, traveler_details: Dict[str, Any], verbose: bool = True) -> Dict[str, Any]:
         global llm_calls_count
         system_prompt = """
@@ -395,6 +254,7 @@ class AmadeusFlightBookingTool(BaseTool):
         adults: int = 1,
         max: int = 5,
         verbose: bool = True,
+        interactive_mode: bool = True,
     ) -> Dict[str, Any]:
         flight_api_calls = 0
         flight_api_success = 0
@@ -449,31 +309,35 @@ class AmadeusFlightBookingTool(BaseTool):
                 print("No flight offers found.")
             return {"error": "No flight offers found.", "_flight_api_calls": flight_api_calls, "_flight_api_success": flight_api_success}
 
+
         flightData = results["data"]
-        mappings = results["dictionaries"]["carriers"]
-        flight_details = []
-        for i, flight in enumerate(flightData):
-          flight_detail = {
-            "departure": flight["itineraries"][0]["segments"][0]["departure"]["iataCode"]+" at: "+flight["itineraries"][0]["segments"][0]["departure"]["at"],
-            "arrival": flight["itineraries"][0]["segments"][-1]["arrival"]["iataCode"]+" at: "+flight["itineraries"][0]["segments"][-1]["arrival"]["at"],
-            "return departure": flight["itineraries"][1]["segments"][0]["departure"]["iataCode"]+" at: "+flight["itineraries"][1]["segments"][0]["departure"]["at"],
-            "return arrival": flight["itineraries"][1]["segments"][-1]["arrival"]["iataCode"]+" at: "+flight["itineraries"][1]["segments"][-1]["arrival"]["at"],
-            "airlines": mappings[flight["itineraries"][0]["segments"][0]["carrierCode"]],
-            "return airlines": mappings[flight["itineraries"][1]["segments"][0]["carrierCode"]],
-            "price": flight["price"]["grandTotal"],
-            "currency": flight["price"]["currency"],
-            }
-          flight_details.append(flight_detail)
-          print(f"Flight {i + 1}: {flight_detail}")
+
+        if interactive_mode:
+            mappings = results["dictionaries"]["carriers"]
+            flight_details = []
+            for i, flight in enumerate(flightData):
+                flight_detail = {
+                    "departure": flight["itineraries"][0]["segments"][0]["departure"]["iataCode"]+" at: "+flight["itineraries"][0]["segments"][0]["departure"]["at"],
+                    "arrival": flight["itineraries"][0]["segments"][-1]["arrival"]["iataCode"]+" at: "+flight["itineraries"][0]["segments"][-1]["arrival"]["at"],
+                    "return departure": flight["itineraries"][1]["segments"][0]["departure"]["iataCode"]+" at: "+flight["itineraries"][1]["segments"][0]["departure"]["at"],
+                    "return arrival": flight["itineraries"][1]["segments"][-1]["arrival"]["iataCode"]+" at: "+flight["itineraries"][1]["segments"][-1]["arrival"]["at"],
+                    "airlines": mappings[flight["itineraries"][0]["segments"][0]["carrierCode"]],
+                    "return airlines": mappings[flight["itineraries"][1]["segments"][0]["carrierCode"]],
+                    "price": flight["price"]["grandTotal"],
+                    "currency": flight["price"]["currency"],
+                    }
+                flight_details.append(flight_detail)
+                print(f"Flight {i + 1}: {flight_detail}")
         
-        preferred_flight = input("Enter the number of your preferred flight to book(by default, it is the first cheapest flight): ")
-        if not preferred_flight.isdigit() or int(preferred_flight) < 1 or int(preferred_flight) > len(flight_details):
-          preferred_flight = 1
+            preferred_flight = input("Enter the number of your preferred flight to book(by default, it is the first cheapest flight): ")
+            if not preferred_flight.isdigit() or int(preferred_flight) < 1 or int(preferred_flight) > len(flight_details):
+                preferred_flight = 1
+            else:
+                preferred_flight = int(preferred_flight)
         else:
-          preferred_flight = int(preferred_flight)
+            preferred_flight = 1
 
         flightOfferData = flightData[preferred_flight - 1]
-
 
         # Pricing
         pricing_url = "https://test.api.amadeus.com/v1/shopping/flight-offers/pricing"
@@ -539,6 +403,7 @@ class AmadeusFlightBookingTool(BaseTool):
         currencyCode:str,
         travelers_details: List[Dict[str, Any]],
         max: int = 5,
+        interactive_mode: bool = True,
     ) -> Dict[str, Any]:
         hotel_api_calls = 0
         hotel_api_success = 0
@@ -619,22 +484,24 @@ class AmadeusFlightBookingTool(BaseTool):
  
         hotels = pricing_data["data"]
         hotelOfferPriceData = sorted(hotels, key=lambda h: float(h["offers"][0]["price"]["total"]))[:5]
-        for idx, hotel in enumerate(hotelOfferPriceData, start=1):
-          offer = hotel["offers"][0]
-          print(
-            f"Hotel {idx}. {hotel['hotel']['name']} - {offer['price']['total']} {offer['price']['currency']} "
-            f"(Check-in: {offer['checkInDate']}, Check-out: {offer['checkOutDate']})"
-          )
         
-        preferred_hotel = input("Enter the number of your preferred hotel to book(by default, it is the first cheapest hotel): ")
-        if not preferred_hotel.isdigit() or int(preferred_hotel) < 1 or int(preferred_hotel) > len(hotelOfferPriceData):
-          preferred_hotel = 1
+        if interactive_mode:
+            for idx, hotel in enumerate(hotelOfferPriceData, start=1):
+                offer = hotel["offers"][0]
+                print(
+                    f"Hotel {idx}. {hotel['hotel']['name']} - {offer['price']['total']} {offer['price']['currency']} "
+                    f"(Check-in: {offer['checkInDate']}, Check-out: {offer['checkOutDate']})"
+                )
+        
+            preferred_hotel = input("Enter the number of your preferred hotel to book(by default, it is the first cheapest hotel): ")
+            if not preferred_hotel.isdigit() or int(preferred_hotel) < 1 or int(preferred_hotel) > len(hotelOfferPriceData):
+                preferred_hotel = 1
+            else:
+                preferred_hotel = int(preferred_hotel)
         else:
-          preferred_hotel = int(preferred_hotel)
-        
+            preferred_hotel = 1
+
         hotelOfferPriceId = hotelOfferPriceData[preferred_hotel-1]["offers"][0]["id"]
-
-
 
         def guest_reference(traveler):
             return {
@@ -853,18 +720,15 @@ def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hote
 
 
 def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool = True, use_real_api: bool = True) -> Dict[str, Any]:
+    global llm_calls_count
     flight_tool = AmadeusFlightBookingTool()
     flight_tool_openai = convert_to_openai_function(flight_tool)
 
     if verbose:
         print(f"Flight Tool OpenAI: {json.dumps(flight_tool_openai, indent=2)}")
 
-    flight_params = AmadeusFlightBookingTool.extract_parameters_with_llm(
-        query, 
-        flight_tool_openai,
-        interactive_mode,
-        verbose
-    )
+    flight_params, param_extractt_llm_calls_count = extract_parameters_with_llm(query, flight_tool_openai, extract_parameters_model, interactive_mode, verbose)
+    llm_calls_count += param_extractt_llm_calls_count
 
     if verbose: 
         print(f"Flight Parameters: {json.dumps(flight_params, indent=2)}")
@@ -886,7 +750,6 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
             additional_traveler_details = flight_tool.extract_traveler_details(additional_traveler, interactive_mode, verbose)
             additional_traveler_details['id'] = str(len(travelers_details) + 1)
             travelers_details.append(additional_traveler_details)
-
 
     # Combine parameters for booking
     booking_params = {
@@ -916,8 +779,8 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
             "llm_calls": llm_calls_count
         }
     
-    flight_booking_result = flight_tool._run(**booking_params, verbose=verbose)
-    hotel_booking_result = flight_tool._run_hotel_booking(**booking_params)
+    flight_booking_result = flight_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
+    hotel_booking_result = flight_tool._run_hotel_booking(**booking_params, interactive_mode=interactive_mode)
     itinerary_result = flight_tool._run_itinerary(**booking_params, verbose=verbose)
 
     # Display booking details
