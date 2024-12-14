@@ -758,7 +758,6 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
             additional_traveler_details['id'] = str(len(travelers_details) + 1)
             travelers_details.append(additional_traveler_details)
 
-
     # Combine parameters for booking
     booking_params = {
         'originLocationCode': flight_params.get('originLocationCode', ''),

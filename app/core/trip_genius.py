@@ -1,4 +1,5 @@
-from booking_agent import initiate_bookings
+# from booking_agent import initiate_bookings
+from booking_multi_agent import initiate_bookings
 import json
 
 # Example usage
