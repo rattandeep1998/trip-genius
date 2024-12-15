@@ -124,7 +124,7 @@ def extract_parameters_with_llm(
         }
     
     if not interactive_mode:
-        return extracted_params
+        return extracted_params, llm_calls_count
     
     # Remove extracted parameters whose value is null
     extracted_params = {k: v for k, v in extracted_params.items() if v is not None}
@@ -136,7 +136,10 @@ def extract_parameters_with_llm(
 
     for param in required_params:
         while param not in extracted_params:
-            input_value = input(f"Please provide a value for '{param}' - {get_parameter_description(param)}: ").strip()
+            required_param_input = f"Please provide a value for '{param}' - {get_parameter_description(param)}: "
+            input_value = yield {"type": "prompt", "message": required_param_input}
+            # input_value = input(required_param_input)
+            input_value = input_value.strip()
 
             llm_calls_count += 1
             
@@ -279,18 +282,21 @@ def extract_traveler_details(extract_parameters_model: str, traveler_input: str 
 
     # If not is iterative mode and function is run on the entire dataset, then return the extracted parameters without asking for human input
     if not interactive_mode:
-        return extracted_details
+        return extracted_details, llm_calls_count
     
     # Interactive validation and completion
     def validate_input(prompt_text, validator=None):
         while True:
-            user_input = input(prompt_text).strip()
+            user_input = yield {"type": "prompt", "message": prompt_text}
+            # user_input = input(prompt_text)
+            user_input = user_input.strip()
+            
             if validator is None or validator(user_input):
                 return user_input
     
     # Validate and complete full name
     if not extracted_details.get('name') or not all(extracted_details['name'].values()):
-        full_name = validate_input("Enter full name (First Last): ")
+        full_name = yield from validate_input("Enter full name (First Last): ")
         name_parts = full_name.split()
         extracted_details['name'] = {
             "firstName": name_parts[0].upper(),
@@ -299,7 +305,7 @@ def extract_traveler_details(extract_parameters_model: str, traveler_input: str 
     
     # Validate date of birth
     if not extracted_details.get('dateOfBirth'):
-        dob = validate_input("Enter date of birth: ")
+        dob = yield from validate_input("Enter date of birth: ")
         # The DOB will be parsed by the LLM call
         extracted_details['dateOfBirth'] = dob
 
@@ -314,7 +320,7 @@ def extract_traveler_details(extract_parameters_model: str, traveler_input: str 
     
     # Validate gender
     if not extracted_details.get('gender'):
-        gender = validate_input("Enter gender: ")
+        gender = yield from validate_input("Enter gender: ")
         extracted_details['gender'] = gender
 
         # gender = validate_input(
@@ -325,7 +331,7 @@ def extract_traveler_details(extract_parameters_model: str, traveler_input: str 
     
     # Validate email
     if not extracted_details.get('contact') or not extracted_details['contact'].get('emailAddress'):
-        email = validate_input(
+        email = yield from validate_input(
             "Enter email address: ", 
             lambda e: '@' in e and '.' in e
         )
@@ -337,7 +343,7 @@ def extract_traveler_details(extract_parameters_model: str, traveler_input: str 
     
     # Validate phone number
     if not extracted_details['contact'].get('phones') or not extracted_details['contact']['phones'][0].get('number') or not extracted_details['contact']['phones'][0].get('countryCallingCode'):
-        phone = validate_input("Enter phone number (with country code): ")
+        phone = yield from validate_input("Enter phone number (with country code): ")
         
         if len(phone) > 10:
             country_code = ''.join(filter(str.isdigit, phone[:-10]))
@@ -385,10 +391,13 @@ def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hote
         
         if verbose:
             print(f"Human Readable Result: {complete_summary}")
+
+        return complete_summary
         
     except Exception as e:
         if verbose:
             print(f"Error converting to human-readable result: {e}")
+        return ""
 
 def extract_missing_booking_parameters(
     booking_params: Dict[str, Any],

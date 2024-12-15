@@ -1,12 +1,16 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from app.core.booking_agent import initiate_bookings
+import uuid
+from typing import Optional
+
+SESSIONS = {}
 
 app = FastAPI(title="Travel Booking Agent API")
 
 class BookingRequest(BaseModel):
     query: str
-    interactive_mode: bool = False
+    interactive_mode: bool = True
     verbose: bool = True
     use_real_api: bool = True
 
@@ -19,6 +23,43 @@ def initiate_bookings_endpoint(request: BookingRequest):
             verbose=request.verbose,
             use_real_api=request.use_real_api,
         )
-        return result
+
+        session_id = str(uuid.uuid4())
+        SESSIONS[session_id] = result
+
+        try:
+            response = next(result)
+            return {"session_id": session_id, "response": response}
+        except StopIteration as e:
+            del SESSIONS[session_id]
+            return {"session_id": session_id, "response": e.value, "done": True}
+    
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class ContinueBookingRequest(BaseModel):
+    session_id: str
+    user_input: Optional[str] = None
+
+@app.post("/continue_booking")
+def continue_booking(request: ContinueBookingRequest):
+    session_id = request.session_id
+    user_input = request.user_input
+
+    if session_id not in SESSIONS:
+        raise HTTPException(status_code=400, detail="Invalid session_id")
+    
+    function = SESSIONS[session_id]
+
+    try:
+        # Send user input to the generator and get the next yielded response
+        response = function.send(user_input)
+        return {"session_id": session_id, "response": response}
+    except StopIteration as e:
+        final_result = e.value
+        del SESSIONS[session_id]
+        return {"session_id": session_id, "response": final_result, "done": True}
+    except Exception as e:
+        # Handle any other exceptions
+        del SESSIONS[session_id]
         raise HTTPException(status_code=500, detail=str(e))

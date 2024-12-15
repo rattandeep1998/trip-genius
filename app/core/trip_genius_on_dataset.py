@@ -1,8 +1,8 @@
 import pandas as pd
 import json
 import time
-from booking_agent import initiate_bookings
-from utils import compare_parameters
+from app.core.booking_agent import initiate_bookings
+from app.core.utils import compare_parameters
 
 def process_bookings(input_csv, output_csv, short_dataset=False):
     # Read the dataset from the input CSV file
@@ -28,7 +28,26 @@ def process_bookings(input_csv, output_csv, short_dataset=False):
         
         # Measure the time taken to run the initiate_bookings function
         start_time = time.time()
-        results_dict = initiate_bookings(input_text, interactive_mode=False, verbose=False, use_real_api = True)
+        # results_dict = initiate_bookings(input_text, interactive_mode=False, verbose=False, use_real_api = True)
+
+        # initiate_bookings is a generator, but in non-interactive mode it won't yield.
+        # So we try to advance the generator once and catch the StopIteration to get the return value.
+        gen = initiate_bookings(input_text, interactive_mode=False, verbose=False, use_real_api=True)
+        try:
+            # Attempt to advance the generator
+            next(gen)
+            # If the code reaches here, it means something was yielded, which we do not expect.
+            # If that happens, we'll just exhaust the generator.
+            for _ in gen:
+                pass
+            # Since we expected no yields, this scenario is unexpected.
+            # Set results_dict to an empty dict or handle differently as needed.
+            results_dict = {}
+        except StopIteration as e:
+            # The generator returned a value rather than yielding.
+            # e.value should contain the dictionary returned by initiate_bookings.
+            results_dict = e.value if hasattr(e, 'value') else {}
+
         end_time = time.time()
         execution_time = end_time - start_time
         total_time += execution_time
@@ -82,8 +101,8 @@ if __name__ == "__main__":
     # input_csv_path = "../../data/travel_booking_dataset.csv"
     # output_csv_path = "../../data/booking_results.csv"
 
-    input_csv_path = "../../data/travel_booking_dataset_short.csv"
-    output_csv_path = "../../data/booking_results_short.csv"
+    input_csv_path = "./data/travel_booking_dataset_short.csv"
+    output_csv_path = "./data/booking_results_short.csv"
     
     process_bookings(input_csv_path, output_csv_path, short_dataset=True)
 
