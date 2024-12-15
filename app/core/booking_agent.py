@@ -9,7 +9,7 @@ from langchain.tools import BaseTool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.utils.function_calling import convert_to_openai_function
-from helpers import extract_parameters_with_llm, extract_traveler_details, convert_to_human_readable_result
+from helpers import extract_parameters_with_llm, extract_traveler_details, convert_to_human_readable_result, extract_missing_booking_parameters
 
 extract_parameters_model = "gpt-3.5-turbo"
 # TODO - Where is this model used ?
@@ -34,7 +34,7 @@ class FlightBookingTool(BaseTool):
         travelers_details: List[Dict[str, Any]] = [],
         travelPlanPreference: str = "",
         destinationCountry:str = "",
-        destionationCity: str = "",
+        destinationCity: str = "",
         originCurrencyCode: str = "",
         adults: int = 1,
         max: int = 5,
@@ -193,8 +193,8 @@ class HotelBookingTool(BaseTool):
         adults: int,
         travelers_details: List[Dict[str, Any]],
         travelPlanPreference: str = "",
-        destionationCountry:str = "",
-        destionationCity: str = "",
+        destinationCountry:str = "",
+        destinationCity: str = "",
         originCurrencyCode: str = "",
         max: int = 5,
         interactive_mode: bool = True,
@@ -372,7 +372,7 @@ class ItinerarySuggestionTool(BaseTool):
         travelers_details: List[Dict[str, Any]],
         travelPlanPreference: str = "",
         destinationCountry:str = "",
-        destionationCity: str = "",
+        destinationCity: str = "",
         originCurrencyCode: str = "",
         max: int = 5,
         verbose: bool = True,
@@ -409,7 +409,7 @@ class ItinerarySuggestionTool(BaseTool):
         try:
             # Get access token
             data = ""
-            if destionationCity and destinationCountry:
+            if destinationCity and destinationCountry:
                 token_response = requests.post(token_url, data=token_data)
                 token_response.raise_for_status()
                 access_token = token_response.json()['access_token']
@@ -422,7 +422,7 @@ class ItinerarySuggestionTool(BaseTool):
                 get_coords_url = "https://test.api.amadeus.com/v1/reference-data/locations/cities"
                 params = {
                     'countryCode': destinationCountry,
-                    'keyword':destionationCity,
+                    'keyword':destinationCity,
                     'max':1
                 }
                 itinerary_api_calls+=1
@@ -490,7 +490,7 @@ class ItinerarySuggestionTool(BaseTool):
             print(f"Error extracting itinerary: {e}")
         return ""
 
-def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool = True, use_real_api: bool = True) -> Dict[str, Any]:
+def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool = True, use_real_api: bool = True):
     global llm_calls_count
     flight_booking_tool = FlightBookingTool()
     hotel_booking_tool = HotelBookingTool()
@@ -534,11 +534,22 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
         'max': flight_params.get('max', 5),
         'travelPlanPreference': flight_params.get('travelPlanPreference', ''),
         'destinationCountry':  flight_params.get('destinationCountry', ''),
-        'destionationCity':  flight_params.get('destionationCity', ''),
+        'destinationCity':  flight_params.get('destinationCity', ''),
         'originCurrencyCode':  flight_params.get('originCurrencyCode', ''),
         'travelers_details': travelers_details,
     }
-    
+
+    if verbose:
+        print("\nBooking Parameters Before Extracting Missing Values:")
+        print(json.dumps(booking_params, indent=2))
+
+    booking_params, llm_calls_made = extract_missing_booking_parameters(
+        booking_params=booking_params,
+        extract_parameters_model=extract_parameters_model
+    )
+
+    llm_calls_count += llm_calls_made
+
     if verbose:
         print("\nBooking Parameters:")
         print(json.dumps(booking_params, indent=2))
