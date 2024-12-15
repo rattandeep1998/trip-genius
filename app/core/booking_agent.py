@@ -10,6 +10,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.utils.function_calling import convert_to_openai_function
 from helpers import extract_parameters_with_llm, extract_traveler_details, convert_to_human_readable_result
+from concurrent.futures import ThreadPoolExecutor
 
 extract_parameters_model = "gpt-3.5-turbo"
 # TODO - Where is this model used ?
@@ -33,9 +34,9 @@ class FlightBookingTool(BaseTool):
         returnDate: str,
         travelers_details: List[Dict[str, Any]] = [],
         travelPlanPreference: str = "",
-        destinationCountry:str = "",
-        destionationCity: str = "",
-        originCurrencyCode: str = "",
+        country:str = "",
+        city: str = "",
+        currencyCode: str = "",
         adults: int = 1,
         max: int = 5,
         verbose: bool = True,
@@ -80,9 +81,8 @@ class FlightBookingTool(BaseTool):
             'max': max,
         }
 
-        if originCurrencyCode:
-            params['originCurrencyCode'] = originCurrencyCode
-            
+        if currencyCode:
+            params['currencyCode'] = currencyCode,
         flight_api_calls += 1
         try:
             response = requests.get(api_url, headers=headers, params=params)
@@ -193,10 +193,11 @@ class HotelBookingTool(BaseTool):
         adults: int,
         travelers_details: List[Dict[str, Any]],
         travelPlanPreference: str = "",
-        destionationCountry:str = "",
-        destionationCity: str = "",
-        originCurrencyCode: str = "",
+        country:str = "",
+        city: str = "",
+        currencyCode: str = "",
         max: int = 5,
+        verbose: bool = False,
         interactive_mode: bool = True,
     ) -> Dict[str, Any]:
         hotel_api_calls = 0
@@ -261,8 +262,8 @@ class HotelBookingTool(BaseTool):
             'bestRateOnly':True,
             'includeClosed':False,
         }
-        if originCurrencyCode:
-            params['currency'] = originCurrencyCode
+        if currencyCode:
+            params['currency'] = currencyCode
 
         hotel_api_calls += 1
         try:
@@ -371,9 +372,9 @@ class ItinerarySuggestionTool(BaseTool):
         adults: int,
         travelers_details: List[Dict[str, Any]],
         travelPlanPreference: str = "",
-        destinationCountry:str = "",
-        destionationCity: str = "",
-        originCurrencyCode: str = "",
+        country:str = "",
+        city: str = "",
+        currencyCode: str = "",
         max: int = 5,
         verbose: bool = True,
         interactive_mode: bool = True,
@@ -384,10 +385,11 @@ class ItinerarySuggestionTool(BaseTool):
         Execute the API call to retrieve and provide itinerary.
         """
         if interactive_mode and not travelPlanPreference:
-            travelPlanPreference = input("Provide any preference in itinerary: ").strip()
+          travelPlanPreference = input("Provide any preference in itinerary: ").strip()
+
 
         if not travelPlanPreference:
-            travelPlanPreference = "tourism"
+          travelPlanPreference = "tourism"
 
         itinerary_api_calls = 0
         itinerary_api_success = 0
@@ -409,7 +411,7 @@ class ItinerarySuggestionTool(BaseTool):
         try:
             # Get access token
             data = ""
-            if destionationCity and destinationCountry:
+            if city and country:
                 token_response = requests.post(token_url, data=token_data)
                 token_response.raise_for_status()
                 access_token = token_response.json()['access_token']
@@ -421,8 +423,8 @@ class ItinerarySuggestionTool(BaseTool):
 
                 get_coords_url = "https://test.api.amadeus.com/v1/reference-data/locations/cities"
                 params = {
-                    'countryCode': destinationCountry,
-                    'keyword':destionationCity,
+                    'countryCode': country,
+                    'keyword':city,
                     'max':1
                 }
                 itinerary_api_calls+=1
@@ -489,12 +491,46 @@ class ItinerarySuggestionTool(BaseTool):
         except Exception as e:
             print(f"Error extracting itinerary: {e}")
         return ""
+    
+def detect_intent(query: str) -> str:
+    """
+    Detect the user's intent from the query: 'book flights', 'book hotels', 'get itinerary', or 'book a trip.'
+    """
+
+
+    system_prompt = f"""
+    You are a travel assistant. Classify the user's query into one of the following intents:
+    - "book flights"
+    - "book hotels"
+    - "get itinerary or travel plan"
+    - "book a trip"
+
+    Guidelines:
+    - return flight for booking flights
+    - return hotel for booking hotels
+    - return itinerary for retrieving itinerary or travel plan
+    - return trip
+
+    return a string with intent.
+    """
+    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", "{query}")
+        ])
+            
+    chain = prompt | llm
+    response = chain.invoke({"query": query})
+    return response.content
+
 
 def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool = True, use_real_api: bool = True) -> Dict[str, Any]:
     global llm_calls_count
     flight_booking_tool = FlightBookingTool()
     hotel_booking_tool = HotelBookingTool()
     itinerary_tool = ItinerarySuggestionTool()
+
 
     flight_tool_openai = convert_to_openai_function(flight_booking_tool)
 
@@ -533,9 +569,9 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
         'adults': len(travelers_details),
         'max': flight_params.get('max', 5),
         'travelPlanPreference': flight_params.get('travelPlanPreference', ''),
-        'destinationCountry':  flight_params.get('destinationCountry', ''),
-        'destionationCity':  flight_params.get('destionationCity', ''),
-        'originCurrencyCode':  flight_params.get('originCurrencyCode', ''),
+        'country':  flight_params.get('country', ''),
+        'city':  flight_params.get('city', ''),
+        'currencyCode':  flight_params.get('currencyCode', ''),
         'travelers_details': travelers_details,
     }
     
@@ -552,9 +588,34 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
             "llm_calls": llm_calls_count
         }
     
-    flight_booking_result = flight_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
-    hotel_booking_result = hotel_booking_tool._run(**booking_params, interactive_mode=interactive_mode)
-    itinerary_result = itinerary_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
+    
+    def flight_booking_tool_wrapper() -> Dict[str, Any]:
+        return flight_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode), {}, {}
+    
+    def hotels_booking_tool_wrapper() -> Dict[str, Any]:
+        return {}, hotel_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode), {}
+    
+    def itinerary_tool_wrapper() -> Dict[str, Any]:
+        return {}, {}, itinerary_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
+    
+    def trip_tool_wrapper() -> Dict[str, Any]:
+        flight_results = flight_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
+        hotel_resuls =  hotel_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
+        itinerary_results = itinerary_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
+        return flight_results, hotel_resuls, itinerary_results
+    
+    llm_calls_count += 1
+    user_intent = detect_intent(query)
+
+    if 'flight' in user_intent:
+       flight_booking_result, hotel_booking_result, itinerary_result = flight_booking_tool_wrapper()
+    elif 'hotel' in user_intent:
+        flight_booking_result, hotel_booking_result, itinerary_result = hotels_booking_tool_wrapper()
+    elif 'itinerary' in user_intent or 'plan' in user_intent:
+        flight_booking_result, hotel_booking_result, itinerary_result = itinerary_tool_wrapper()
+    else:
+        flight_booking_result, hotel_booking_result, itinerary_result = trip_tool_wrapper()
+
 
     # Display booking details
     if verbose:
