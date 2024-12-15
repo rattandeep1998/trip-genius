@@ -9,6 +9,8 @@ if __name__ == "__main__":
         "My phone number is +1 9144471153."
     )
 
+    sample_query = "I'd like to book a flight for two people from Bengaluru to Paris. We want to leave on March 5, 2025, and return on March 20, 2025. My details: Aryan Gupta, born on July 12, 1990. The second traveler is Maya Patel, born on August 18, 1992. Contact email is aryan.gupta@email.com, and my phone number is +91 9876543210."
+
     # Get the generator
     gen = initiate_bookings(sample_query)
 

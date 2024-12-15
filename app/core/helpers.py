@@ -256,6 +256,8 @@ def extract_traveler_details(extract_parameters_model: str, traveler_input: str 
     - Format phone number with country code if present.
     - Infer gender from input if not explicitly provided.
     - If details are missing, return null for those fields.
+    - If only one email address is provided, use it for all travelers.
+    - If only one phone number is provided, use it for all travelers.
     - Return a list of JSON objects if multiple travelers are identified.
     - Return a list of single JSON object if only one traveler is found.
     - Return type is list
