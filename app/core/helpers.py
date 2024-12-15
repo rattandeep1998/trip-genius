@@ -377,11 +377,27 @@ def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hote
     chain = prompt | llm
     
     try:
-        response = chain.invoke({
+        if not flight_booking_result and not hotel_booking_result:
+            " \nTravel Plan:\n" + itinerary_result
+        elif not flight_booking_result:
+            response = chain.invoke({
+            "flight_booking_result": {},
+            "hotel_booking_result": json.dumps(hotel_booking_result),
+        })
+        elif not hotel_booking_result:
+            response = chain.invoke({
+            "flight_booking_result": json.dumps(flight_booking_result),
+            "hotel_booking_result": {},
+        })
+        else:
+            response = chain.invoke({
             "flight_booking_result": json.dumps(flight_booking_result),
             "hotel_booking_result": json.dumps(hotel_booking_result),
         })
-        complete_summary = response.content + " \nTravel Plan:\n" + itinerary_result
+        
+        complete_summary = response.content
+        if itinerary_result:
+            complete_summary+= " \nTravel Plan:\n" + itinerary_result
         
         if verbose:
             print(f"Human Readable Result: {complete_summary}")
