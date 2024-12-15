@@ -33,9 +33,9 @@ class FlightBookingTool(BaseTool):
         returnDate: str,
         travelers_details: List[Dict[str, Any]] = [],
         travelPlanPreference: str = "",
-        country:str = "",
-        city: str = "",
-        currencyCode: str = "",
+        destinationCountry:str = "",
+        destionationCity: str = "",
+        sourceCurrencyCode: str = "",
         adults: int = 1,
         max: int = 5,
         verbose: bool = True,
@@ -80,8 +80,9 @@ class FlightBookingTool(BaseTool):
             'max': max,
         }
 
-        if currencyCode:
-            params['currencyCode'] = currencyCode,
+        if sourceCurrencyCode:
+            params['sourceCurrencyCode'] = sourceCurrencyCode
+            
         flight_api_calls += 1
         try:
             response = requests.get(api_url, headers=headers, params=params)
@@ -192,9 +193,9 @@ class HotelBookingTool(BaseTool):
         adults: int,
         travelers_details: List[Dict[str, Any]],
         travelPlanPreference: str = "",
-        country:str = "",
-        city: str = "",
-        currencyCode: str = "",
+        destionationCountry:str = "",
+        destionationCity: str = "",
+        sourceCurrencyCode: str = "",
         max: int = 5,
         interactive_mode: bool = True,
     ) -> Dict[str, Any]:
@@ -260,8 +261,8 @@ class HotelBookingTool(BaseTool):
             'bestRateOnly':True,
             'includeClosed':False,
         }
-        if currencyCode:
-            params['currency'] = currencyCode
+        if sourceCurrencyCode:
+            params['currency'] = sourceCurrencyCode
 
         hotel_api_calls += 1
         try:
@@ -370,9 +371,9 @@ class ItinerarySuggestionTool(BaseTool):
         adults: int,
         travelers_details: List[Dict[str, Any]],
         travelPlanPreference: str = "",
-        country:str = "",
-        city: str = "",
-        currencyCode: str = "",
+        destinationCountry:str = "",
+        destionationCity: str = "",
+        sourceCurrencyCode: str = "",
         max: int = 5,
         verbose: bool = True,
         interactive_mode: bool = True,
@@ -408,7 +409,7 @@ class ItinerarySuggestionTool(BaseTool):
         try:
             # Get access token
             data = ""
-            if city and country:
+            if destionationCity and destinationCountry:
                 token_response = requests.post(token_url, data=token_data)
                 token_response.raise_for_status()
                 access_token = token_response.json()['access_token']
@@ -420,8 +421,8 @@ class ItinerarySuggestionTool(BaseTool):
 
                 get_coords_url = "https://test.api.amadeus.com/v1/reference-data/locations/cities"
                 params = {
-                    'countryCode': country,
-                    'keyword':city,
+                    'countryCode': destinationCountry,
+                    'keyword':destionationCity,
                     'max':1
                 }
                 itinerary_api_calls+=1
@@ -532,9 +533,9 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
         'adults': len(travelers_details),
         'max': flight_params.get('max', 5),
         'travelPlanPreference': flight_params.get('travelPlanPreference', ''),
-        'country':  flight_params.get('country', ''),
-        'city':  flight_params.get('city', ''),
-        'currencyCode':  flight_params.get('currencyCode', ''),
+        'destinationCountry':  flight_params.get('destinationCountry', ''),
+        'destionationCity':  flight_params.get('destionationCity', ''),
+        'sourceCurrencyCode':  flight_params.get('sourceCurrencyCode', ''),
         'travelers_details': travelers_details,
     }
     
