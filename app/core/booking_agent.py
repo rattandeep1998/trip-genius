@@ -155,16 +155,14 @@ class FlightBookingTool(BaseTool):
                 print("No priced flight offers found.")
             return {"error": "No priced flight offers found.", "_flight_api_calls": flight_api_calls, "_flight_api_success": flight_api_success}
         
-        flightOfferPriceData = pricing_data["data"]["flightOffers"][0]
+        flightOfferPriceData = pricing_data["data"]["flightOffers"]
 
         # Flight order
         orders_url = "https://test.api.amadeus.com/v1/booking/flight-orders"
         payload = {
             "data": {
                 "type": "flight-order",
-                "flightOffers": [
-                    flightOfferPriceData
-                ],
+                "flightOffers": flightOfferPriceData,
                 "travelers": travelers_details
             }
         }
@@ -519,10 +517,12 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
 
     travelers_details = []
     
-    traveler_details, traveler_extract_llm_calls = yield from extract_traveler_details(extract_parameters_model, query, interactive_mode, verbose)
+    travelers_details, traveler_extract_llm_calls = yield from extract_traveler_details(extract_parameters_model, query, interactive_mode, verbose)
     llm_calls_count += traveler_extract_llm_calls
-    traveler_details['id'] = '1'
-    travelers_details.append(traveler_details)
+    id = 1
+    for traveler_details in travelers_details:
+        traveler_details['id'] = str(id)
+        id +=1
 
     # Run this code only to prompt for additional travelers. Do not run this code when running on the entire dataset
     if interactive_mode:
@@ -542,8 +542,10 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
             
             additional_traveler_details, traveler_extract_llm_calls = yield from extract_traveler_details(extract_parameters_model, additional_traveler, interactive_mode, verbose)
             llm_calls_count += traveler_extract_llm_calls
-            additional_traveler_details['id'] = str(len(travelers_details) + 1)
-            travelers_details.append(additional_traveler_details)
+            for traveler_details in additional_traveler_details:
+                traveler_details['id'] = str(id)
+                id+=1
+                travelers_details.append(traveler_details)
     
     # Combine parameters for booking
     booking_params = {
