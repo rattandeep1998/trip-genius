@@ -383,11 +383,10 @@ class ItinerarySuggestionTool(BaseTool):
         Execute the API call to retrieve and provide itinerary.
         """
         if interactive_mode and not travelPlanPreference:
-          travelPlanPreference = input("Provide any preference in itinerary: ").strip()
-
+            travelPlanPreference = input("Provide any preference in itinerary: ").strip()
 
         if not travelPlanPreference:
-          travelPlanPreference = "tourism"
+            travelPlanPreference = "tourism"
 
         itinerary_api_calls = 0
         itinerary_api_success = 0

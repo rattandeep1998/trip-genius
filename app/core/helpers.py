@@ -26,7 +26,7 @@ def extract_single_param_value_llm(param: str, input_value: str, extract_paramet
     Extract the value of the parameter '{param}' from the give user input.
 
     Extraction Guidelines:
-    1. Carefully analyze the user query to extract values for each parameter
+    1. Carefully analyze the user query to extract value of the parameter. Return only the value of the parameter without any additional information
     2. Match parameters exactly as specified in the function specification
     3. Use exact IATA codes for locations if possible. If city names are given, use the main airport code
     4. Use YYYY-MM-DD format for dates. If the year is not given, assume current year for the date.
