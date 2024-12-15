@@ -9,7 +9,7 @@ from langchain.tools import BaseTool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.utils.function_calling import convert_to_openai_function
-from helpers import extract_parameters_with_llm, extract_traveler_details, convert_to_human_readable_result, extract_missing_booking_parameters
+from app.core.helpers import extract_parameters_with_llm, extract_traveler_details, convert_to_human_readable_result, extract_missing_booking_parameters
 
 extract_parameters_model = "gpt-3.5-turbo"
 # TODO - Where is this model used ?
@@ -81,7 +81,7 @@ class FlightBookingTool(BaseTool):
         }
 
         if originCurrencyCode:
-            params['originCurrencyCode'] = originCurrencyCode
+            params['currencyCode'] = originCurrencyCode
             
         flight_api_calls += 1
         try:
@@ -116,9 +116,13 @@ class FlightBookingTool(BaseTool):
                     }
                 flight_details.append(flight_detail)
                 print(f"Flight {i + 1}: {flight_detail}")
-        
-            preferred_flight = input("Enter the number of your preferred flight to book(by default, it is the first cheapest flight): ")
-            if not preferred_flight.isdigit() or int(preferred_flight) < 1 or int(preferred_flight) > len(flight_details):
+                yield {"type": "message", "text": f"Flight {i + 1}: {flight_detail}"}
+
+            preferred_flight_input = "Enter the number of your preferred flight to book(by default, it is the first cheapest flight): "
+            preferred_flight = yield {"type": "prompt", "message": preferred_flight_input}
+            # preferred_flight = input(preferred_flight_input)
+
+            if not preferred_flight or not preferred_flight.isdigit() or int(preferred_flight) < 1 or int(preferred_flight) > len(flight_details):
                 preferred_flight = 1
             else:
                 preferred_flight = int(preferred_flight)
@@ -287,9 +291,14 @@ class HotelBookingTool(BaseTool):
                     f"Hotel {idx}. {hotel['hotel']['name']} - {offer['price']['total']} {offer['price']['currency']} "
                     f"(Check-in: {offer['checkInDate']}, Check-out: {offer['checkOutDate']})"
                 )
-        
-            preferred_hotel = input("Enter the number of your preferred hotel to book(by default, it is the first cheapest hotel): ")
-            if not preferred_hotel.isdigit() or int(preferred_hotel) < 1 or int(preferred_hotel) > len(hotelOfferPriceData):
+
+                yield {"type": "message", "text": f"Hotel {idx}. {hotel['hotel']['name']} - {offer['price']['total']} {offer['price']['currency']} (Check-in: {offer['checkInDate']}, Check-out: {offer['checkOutDate']})"}
+
+            preferred_hotel_input = "Enter the number of your preferred hotel to book(by default, it is the first cheapest hotel): "
+            preferred_hotel = yield {"type": "prompt", "message": preferred_hotel_input}
+            # preferred_hotel = input(preferred_hotel_input)
+
+            if not preferred_hotel or not preferred_hotel.isdigit() or int(preferred_hotel) < 1 or int(preferred_hotel) > len(hotelOfferPriceData):
                 preferred_hotel = 1
             else:
                 preferred_hotel = int(preferred_hotel)
@@ -384,10 +393,14 @@ class ItinerarySuggestionTool(BaseTool):
         Execute the API call to retrieve and provide itinerary.
         """
         if interactive_mode and not travelPlanPreference:
-            travelPlanPreference = input("Provide any preference in itinerary: ").strip()
-
+            itinerary_preference_message = "Provide any preference in itinerary: "
+            travelPlanPreference = yield {"type": "prompt", "message": itinerary_preference_message}
+            # travelPlanPreference = input(itinerary_preference_message)
+            
         if not travelPlanPreference:
             travelPlanPreference = "tourism"
+
+        travelPlanPreference = travelPlanPreference.strip()
 
         itinerary_api_calls = 0
         itinerary_api_success = 0
@@ -501,12 +514,12 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
     if verbose:
         print(f"Flight Tool OpenAI: {json.dumps(flight_tool_openai, indent=2)}")
 
-    flight_params, param_extract_llm_calls_count = extract_parameters_with_llm(query, flight_tool_openai, extract_parameters_model, interactive_mode, verbose)
+    flight_params, param_extract_llm_calls_count = yield from extract_parameters_with_llm(query, flight_tool_openai, extract_parameters_model, interactive_mode, verbose)
     llm_calls_count += param_extract_llm_calls_count
 
     travelers_details = []
     
-    traveler_details, traveler_extract_llm_calls = extract_traveler_details(extract_parameters_model, query, interactive_mode, verbose)
+    traveler_details, traveler_extract_llm_calls = yield from extract_traveler_details(extract_parameters_model, query, interactive_mode, verbose)
     llm_calls_count += traveler_extract_llm_calls
     traveler_details['id'] = '1'
     travelers_details.append(traveler_details)
@@ -514,16 +527,24 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
     # Run this code only to prompt for additional travelers. Do not run this code when running on the entire dataset
     if interactive_mode:
         while True:
-            add_more = input("Do you want to add another traveler? (yes/no): ").lower()
-            if add_more != 'yes':
+            add_more_message = "Do you want to add another traveler? (yes/no): "
+            add_more = yield {"type": "prompt", "message": add_more_message}
+            # add_more = input(add_more_message)
+
+            print(f"Add More: {add_more}")
+            
+            if not add_more or add_more.lower() != 'yes':
                 break
             
-            additional_traveler = input("Enter additional traveler details: ")
-            additional_traveler_details, traveler_extract_llm_calls = extract_traveler_details(extract_parameters_model, additional_traveler, interactive_mode, verbose)
+            additional_traveler_input_message = "Enter additional traveler details: "
+            additional_traveler = yield {"type": "prompt", "message": additional_traveler_input_message}
+            # additional_traveler = input(additional_traveler_input_message)
+            
+            additional_traveler_details, traveler_extract_llm_calls = yield from extract_traveler_details(extract_parameters_model, additional_traveler, interactive_mode, verbose)
             llm_calls_count += traveler_extract_llm_calls
             additional_traveler_details['id'] = str(len(travelers_details) + 1)
             travelers_details.append(additional_traveler_details)
-
+    
     # Combine parameters for booking
     booking_params = {
         'originLocationCode': flight_params.get('originLocationCode', ''),
@@ -545,7 +566,8 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
 
     booking_params, llm_calls_made = extract_missing_booking_parameters(
         booking_params=booking_params,
-        extract_parameters_model=extract_parameters_model
+        extract_parameters_model=extract_parameters_model,
+        verbose=verbose,
     )
 
     llm_calls_count += llm_calls_made
@@ -563,13 +585,19 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
             "llm_calls": llm_calls_count
         }
     
-    flight_booking_result = flight_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
-    hotel_booking_result = hotel_booking_tool._run(**booking_params, interactive_mode=interactive_mode)
-    itinerary_result = itinerary_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
+    flight_booking_result = yield from flight_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
+    hotel_booking_result = yield from hotel_booking_tool._run(**booking_params, interactive_mode=interactive_mode)
+    itinerary_result = yield from itinerary_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
+
+    # flight_booking_result = list(flight_booking_result)
+    # hotel_booking_result = list(hotel_booking_result)
+    # itinerary_result = list(itinerary_result)
 
     # Display booking details
     if verbose:
         print("\nBooking Details:")
+        print(flight_booking_result)
+
         print(json.dumps(flight_booking_result, indent=2))
 
         print("\nHotel Booking Details:")
@@ -579,7 +607,8 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
         print(json.dumps(itinerary_result, indent=2))
 
     llm_calls_count += 1
-    convert_to_human_readable_result(flight_booking_result, hotel_booking_result, itinerary_result, convert_to_human_results_model, verbose)
+
+    complete_summary = convert_to_human_readable_result(flight_booking_result, hotel_booking_result, itinerary_result, convert_to_human_results_model, verbose)
 
     flight_api_calls = flight_booking_result.get("_flight_api_calls", 0)
     flight_api_success = flight_booking_result.get("_flight_api_success", 0)
@@ -596,5 +625,6 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
         "flight_api_success": flight_api_success,
         "hotel_api_calls": hotel_api_calls,
         "hotel_api_success": hotel_api_success,
-        "llm_calls": llm_calls_count
+        "llm_calls": llm_calls_count,
+        "complete_summary": complete_summary
     }
