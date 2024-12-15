@@ -166,6 +166,11 @@ class FlightBookingTool(BaseTool):
                 "travelers": travelers_details
             }
         }
+
+        if verbose:
+            print("Flight Order Payload:")
+            print(json.dumps(payload, indent=2))
+
         flight_api_calls += 1
         try:
             order_response = requests.post(orders_url, headers=headers, json=payload)
@@ -173,8 +178,18 @@ class FlightBookingTool(BaseTool):
             order_data = order_response.json()
             flight_api_success += 1
         except requests.RequestException as e:
-            return {"error": str(e), "_flight_api_calls": flight_api_calls, "_flight_api_success": flight_api_success}
-
+            error_details = {
+                "error": str(e),
+                "status_code": getattr(e.response, "status_code", None),
+                "reason": getattr(e.response, "reason", None),
+                "text": getattr(e.response, "text", None),
+                "_flight_api_calls": flight_api_calls,
+                "_flight_api_success": flight_api_success,
+            }
+            if verbose:
+                print(f"Error booking flight: {error_details}")
+            return error_details
+        
         # Add api call info to result
         order_data["_flight_api_calls"] = flight_api_calls
         order_data["_flight_api_success"] = flight_api_success
@@ -200,6 +215,7 @@ class HotelBookingTool(BaseTool):
         originCurrencyCode: str = "",
         max: int = 5,
         interactive_mode: bool = True,
+        verbose: bool = True,
     ) -> Dict[str, Any]:
         hotel_api_calls = 0
         hotel_api_success = 0
@@ -350,6 +366,10 @@ class HotelBookingTool(BaseTool):
             }
         }
 
+        if verbose:
+            print("Hotel Order Payload:")
+            print(json.dumps(payload, indent=2))
+
         hotel_api_calls += 1
         try:
             order_response = requests.post(orders_url, headers=headers, json=payload)
@@ -357,7 +377,17 @@ class HotelBookingTool(BaseTool):
             order_data = order_response.json()
             hotel_api_success += 1
         except requests.RequestException as e:
-            return {"error": str(e), "_hotel_api_calls": hotel_api_calls, "_hotel_api_success": hotel_api_success}
+            error_details = {
+                "error": str(e),
+                "status_code": getattr(e.response, "status_code", None),
+                "reason": getattr(e.response, "reason", None),
+                "text": getattr(e.response, "text", None),
+                "_hotel_api_calls": hotel_api_calls,
+                "_hotel_api_success": hotel_api_success,
+            }
+            if verbose:
+                print(f"Error booking hotel: {error_details}")
+            return error_details
 
         order_data["_hotel_api_calls"] = hotel_api_calls
         order_data["_hotel_api_success"] = hotel_api_success
@@ -574,6 +604,41 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
 
     llm_calls_count += llm_calls_made
 
+    # HARDCODED BOOKING PARAM FOR TESTING
+    # booking_params = {
+    #     "originLocationCode": "DEL",
+    #     "destinationLocationCode": "JFK",
+    #     "departureDate": "2024-12-20",
+    #     "returnDate": "2025-01-05",
+    #     "adults": 1,
+    #     "max": 5,
+    #     "travelPlanPreference": "",
+    #     "destinationCountry": "US",
+    #     "destinationCity": "New York",
+    #     "originCurrencyCode": "INR",
+    #     "travelers_details": [
+    #     {
+    #         "dateOfBirth": "1998-03-07",
+    #         "name": {
+    #         "firstName": "RD",
+    #         "lastName": "SINGH"
+    #         },
+    #         "gender": "MALE",
+    #         "contact": {
+    #         "emailAddress": "jnnj@gmail.com",
+    #         "phones": [
+    #             {
+    #             "deviceType": "MOBILE",
+    #             "countryCallingCode": 1,
+    #             "number": "9144471153"
+    #             }
+    #         ]
+    #         },
+    #         "id": "1"
+    #     }
+    #     ]
+    # }
+
     if verbose:
         print("\nBooking Parameters:")
         print(json.dumps(booking_params, indent=2))
@@ -588,7 +653,7 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
         }
     
     flight_booking_result = yield from flight_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
-    hotel_booking_result = yield from hotel_booking_tool._run(**booking_params, interactive_mode=interactive_mode)
+    hotel_booking_result = yield from hotel_booking_tool._run(**booking_params, interactive_mode=interactive_mode, verbose=verbose)
     itinerary_result = yield from itinerary_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
 
     # Display booking details
