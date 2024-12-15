@@ -31,11 +31,11 @@ class FlightBookingTool(BaseTool):
         destinationLocationCode: str, 
         departureDate: str,
         returnDate: str,
-        travelPlanPreference: str,
-        country:str,
-        city:str,
-        currencyCode:str,
         travelers_details: List[Dict[str, Any]] = [],
+        travelPlanPreference: str = "",
+        country:str = "",
+        city: str = "",
+        currencyCode: str = "",
         adults: int = 1,
         max: int = 5,
         verbose: bool = True,
@@ -78,8 +78,10 @@ class FlightBookingTool(BaseTool):
             'returnDate': returnDate,
             'adults': adults,
             'max': max,
-            'currencyCode':currencyCode,
         }
+
+        if currencyCode:
+            params['currencyCode'] = currencyCode,
         flight_api_calls += 1
         try:
             response = requests.get(api_url, headers=headers, params=params)
@@ -188,11 +190,11 @@ class HotelBookingTool(BaseTool):
         departureDate: str,
         returnDate: str,
         adults: int,
-        travelPlanPreference: str,
-        country:str,
-        city:str,
-        currencyCode:str,
         travelers_details: List[Dict[str, Any]],
+        travelPlanPreference: str = "",
+        country:str = "",
+        city: str = "",
+        currencyCode: str = "",
         max: int = 5,
         interactive_mode: bool = True,
     ) -> Dict[str, Any]:
@@ -257,8 +259,9 @@ class HotelBookingTool(BaseTool):
             'paymentPolicy':'NONE',
             'bestRateOnly':True,
             'includeClosed':False,
-            'currency':currencyCode
         }
+        if currencyCode:
+            params['currency'] = currencyCode
 
         hotel_api_calls += 1
         try:
@@ -365,19 +368,26 @@ class ItinerarySuggestionTool(BaseTool):
         departureDate: str,
         returnDate: str,
         adults: int,
-        travelPlanPreference: str,
-        country:str,
-        city:str,
-        currencyCode:str,
         travelers_details: List[Dict[str, Any]],
+        travelPlanPreference: str = "",
+        country:str = "",
+        city: str = "",
+        currencyCode: str = "",
         max: int = 5,
         verbose: bool = True,
+        interactive_mode: bool = True,
         ) -> Dict[str, Any]:
         global llm_calls_count
 
         """
         Execute the API call to retrieve and provide itinerary.
         """
+        if interactive_mode and not travelPlanPreference:
+          travelPlanPreference = input("Provide any preference in itinerary: ").strip()
+
+
+        if not travelPlanPreference:
+          travelPlanPreference = "tourism"
 
         itinerary_api_calls = 0
         itinerary_api_success = 0
@@ -398,47 +408,49 @@ class ItinerarySuggestionTool(BaseTool):
 
         try:
             # Get access token
-            token_response = requests.post(token_url, data=token_data)
-            token_response.raise_for_status()
-            access_token = token_response.json()['access_token']
+            data = ""
+            if city and country:
+                token_response = requests.post(token_url, data=token_data)
+                token_response.raise_for_status()
+                access_token = token_response.json()['access_token']
 
-            # Prepare API call
-            headers = {
-                'Authorization': f'Bearer {access_token}'
-            }
+                # Prepare API call
+                headers = {
+                    'Authorization': f'Bearer {access_token}'
+                }
 
-            get_coords_url = "https://test.api.amadeus.com/v1/reference-data/locations/cities"
-            params = {
-                'countryCode': country,
-                'keyword':city,
-                'max':1
-            }
-            itinerary_api_calls+=1
-            try:
-              get_coords_response = requests.get(get_coords_url, headers=headers, params=params)
-              get_coords_response.raise_for_status()
-              get_coords_response_data = get_coords_response.json()
-              itinerary_api_success += 1
-              if "data" not in get_coords_response_data  or len(get_coords_response_data["data"]) == 0 or "geoCode" not in get_coords_response_data["data"][0]:
-                data = ""
-              else:
-                activities_url = "https://test.api.amadeus.com/v1/shopping/activities"
+                get_coords_url = "https://test.api.amadeus.com/v1/reference-data/locations/cities"
+                params = {
+                    'countryCode': country,
+                    'keyword':city,
+                    'max':1
+                }
                 itinerary_api_calls+=1
                 try:
-                  activities_response = requests.get(activities_url, headers=headers, params= get_coords_response_data["data"][0]["geoCode"])
-                  activities_response.raise_for_status()
-                  activities_data = activities_response.json()
-                  itinerary_api_success += 1
-                  if "data" not in activities_data  or len(activities_data["data"]) == 0:
-                    data = ""
-                  else:
-                    data = json.dumps(activities_data['data'][:50])
-                    data = data.replace('{', '{{')
-                    data = data.replace('}', '}}')
+                    get_coords_response = requests.get(get_coords_url, headers=headers, params=params)
+                    get_coords_response.raise_for_status()
+                    get_coords_response_data = get_coords_response.json()
+                    itinerary_api_success += 1
+                    if "data" not in get_coords_response_data  or len(get_coords_response_data["data"]) == 0 or "geoCode" not in get_coords_response_data["data"][0]:
+                        data = ""
+                    else:
+                        activities_url = "https://test.api.amadeus.com/v1/shopping/activities"
+                        itinerary_api_calls+=1
+                        try:
+                            activities_response = requests.get(activities_url, headers=headers, params= get_coords_response_data["data"][0]["geoCode"])
+                            activities_response.raise_for_status()
+                            activities_data = activities_response.json()
+                            itinerary_api_success += 1
+                            if "data" not in activities_data  or len(activities_data["data"]) == 0:
+                                data = ""
+                            else:
+                                data = json.dumps(activities_data['data'][:50])
+                                data = data.replace('{', '{{')
+                                data = data.replace('}', '}}')
+                        except requests.RequestException as e:
+                            print(f"error: {str(e)}, _itinerary_api_calls: {itinerary_api_calls}, _itinerary_api_success: {itinerary_api_success}")
                 except requests.RequestException as e:
-                  print(f"error: {str(e)}, _itinerary_api_calls: {itinerary_api_calls}, _itinerary_api_success: {itinerary_api_success}")
-            except requests.RequestException as e:
-               print(f"error: {str(e)}, _itinerary_api_calls: {itinerary_api_calls}, _itinerary_api_success: {itinerary_api_success}")
+                    print(f"error: {str(e)}, _itinerary_api_calls: {itinerary_api_calls}, _itinerary_api_success: {itinerary_api_success}")
 
             system_prompt = f"""
             You are an expert at planning trips in the most optimized way with best suggestions for the given city.
@@ -542,7 +554,7 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
     
     flight_booking_result = flight_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
     hotel_booking_result = hotel_booking_tool._run(**booking_params, interactive_mode=interactive_mode)
-    itinerary_result = itinerary_tool._run(**booking_params, verbose=verbose)
+    itinerary_result = itinerary_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
 
     # Display booking details
     if verbose:
@@ -552,7 +564,7 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
         print("\nHotel Booking Details:")
         print(json.dumps(hotel_booking_result, indent=2))
         
-        print("\Itinerary:")
+        print("\nItinerary:")
         print(json.dumps(itinerary_result, indent=2))
 
     llm_calls_count += 1

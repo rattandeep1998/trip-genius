@@ -12,9 +12,9 @@ def get_parameter_description(param: str) -> str:
         'adults': 'Number of adult travelers (age 12 or older)',
         'max': 'Maximum number of flight offers to return (must be >= 1, default 250)',
         'travelPlanPreference': 'Preference for itinerary (Take from user input, leave empty if not specified explicitly)',
-        'country':'Country code of the destination location(e.g., US for New York). Donot leave empty',
-        'city':'Full city name of the destination city(e.g., New York City for New York or NYC).  Donot leave empty',
-        'currencyCode':'Country currency of the source location(originLocationCode e.g., USD for New York). Donot leave empty',
+        'country':'Country code of the destination location from with the traveller will arrive(e.g., US for New York). Donot leave empty.',
+        'city':'Full city name of the destination city from with the traveller will arrive(e.g., New York City for New York or NYC).  Donot leave empty.',
+        'currencyCode':'Country currency of the source location from with the traveller will depart(originLocationCode e.g., USD for New York). Donot leave empty',
     }
     
     return descriptions.get(param, 'No description available')
