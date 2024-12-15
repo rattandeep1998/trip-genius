@@ -10,6 +10,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.utils.function_calling import convert_to_openai_function
 from helpers import extract_parameters_with_llm, extract_traveler_details, convert_to_human_readable_result
+from langchain.agents import initialize_agent, AgentType, Tool
+from concurrent.futures import ThreadPoolExecutor
 
 extract_parameters_model = "gpt-3.5-turbo"
 # TODO - Where is this model used ?
@@ -25,22 +27,9 @@ class FlightBookingTool(BaseTool):
     name: str = "amadeus_flight_booking"
     description: str = "Books flight offers from the Amadeus API with dynamic traveler information."
 
-    def _run(
-        self, 
-        originLocationCode: str, 
-        destinationLocationCode: str, 
-        departureDate: str,
-        returnDate: str,
-        travelers_details: List[Dict[str, Any]] = [],
-        travelPlanPreference: str = "",
-        country:str = "",
-        city: str = "",
-        currencyCode: str = "",
-        adults: int = 1,
-        max: int = 5,
-        verbose: bool = True,
-        interactive_mode: bool = True,
-    ) -> Dict[str, Any]:
+    def _run(self, query:str) -> Dict[str, Any]:
+        print(f"Print for flights: {query}")
+        return
         flight_api_calls = 0
         flight_api_success = 0
 
@@ -183,21 +172,9 @@ class HotelBookingTool(BaseTool):
     name: str = "hotel_booking"
     description: str = "Books hotel offers from the Amadeus API."
 
-    def _run(
-        self,
-        originLocationCode: str,
-        destinationLocationCode: str,
-        departureDate: str,
-        returnDate: str,
-        adults: int,
-        travelers_details: List[Dict[str, Any]],
-        travelPlanPreference: str = "",
-        country:str = "",
-        city: str = "",
-        currencyCode: str = "",
-        max: int = 5,
-        interactive_mode: bool = True,
-    ) -> Dict[str, Any]:
+    def _run(self, query:str) -> Dict[str, Any]:
+        print(f"Print for hotels: {query}")
+        return
         hotel_api_calls = 0
         hotel_api_success = 0
 
@@ -361,24 +338,10 @@ class ItinerarySuggestionTool(BaseTool):
     name: str = "itinerary_suggestion"
     description: str = "Generates optimized travel itineraries."
     
-    def _run(
-        self,
-        originLocationCode: str,
-        destinationLocationCode: str,
-        departureDate: str,
-        returnDate: str,
-        adults: int,
-        travelers_details: List[Dict[str, Any]],
-        travelPlanPreference: str = "",
-        country:str = "",
-        city: str = "",
-        currencyCode: str = "",
-        max: int = 5,
-        verbose: bool = True,
-        interactive_mode: bool = True,
-        ) -> Dict[str, Any]:
+    def _run(self, query:str) -> Dict[str, Any]:
         global llm_calls_count
-
+        print(f"Print for itinerary: {query}")
+        return
         """
         Execute the API call to retrieve and provide itinerary.
         """
@@ -489,12 +452,58 @@ class ItinerarySuggestionTool(BaseTool):
         except Exception as e:
             print(f"Error extracting itinerary: {e}")
         return ""
+    
+def detect_intent(query: str, llm:Any) -> str:
+    """
+    Detects the user intent: 'book flights', 'book hotels', 'get itinerary', or 'book a trip'.
+    """
+    prompt = f"""
+    You are an assistant to classify user queries into intents. Classify the following query into one of:
+    - "book flights"
+    - "book hotels"
+    - "get itinerary"
+    - "book a trip"
+
+    Query: {query}
+    Intent:
+    """
+    response = llm(prompt)
+    return response.content.strip().lower()
+
+def execute_tools(query: str) -> Dict[str, Any]:
+    intent = detect_intent(query)
+    print(f"Detected Intent: {intent}")
+
+    results = {}
+
+    if intent == "book flights":
+        results["flights"] = flight_booking_tool._run(query)
+    elif intent == "book hotels":
+        results["hotels"] = hotel_booking_tool._run(query)
+    elif intent == "get itinerary":
+        results["itinerary"] = itinerary_tool._run(query)
+    elif intent == "book a trip":
+        with ThreadPoolExecutor() as executor:
+            future_flights = executor.submit(flight_booking_tool._run, query)
+            future_hotels = executor.submit(hotel_booking_tool._run, query)
+            future_itinerary = executor.submit(itinerary_tool._run, query)
+
+            results["flights"] = future_flights.result()
+            results["hotels"] = future_hotels.result()
+            results["itinerary"] = future_itinerary.result()
+    else:
+        results["error"] = "Unknown intent detected."
+
+    return results
 
 def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool = True, use_real_api: bool = True) -> Dict[str, Any]:
     global llm_calls_count
     flight_booking_tool = FlightBookingTool()
     hotel_booking_tool = HotelBookingTool()
     itinerary_tool = ItinerarySuggestionTool()
+
+    tools = []
+
 
     flight_tool_openai = convert_to_openai_function(flight_booking_tool)
 
@@ -552,9 +561,43 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
             "llm_calls": llm_calls_count
         }
     
-    flight_booking_result = flight_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
-    hotel_booking_result = hotel_booking_tool._run(**booking_params, interactive_mode=interactive_mode)
-    itinerary_result = itinerary_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
+    
+    # flight_booking_result = flight_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
+    # hotel_booking_result = hotel_booking_tool._run(**booking_params, interactive_mode=interactive_mode)
+    # itinerary_result = itinerary_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
+
+    tools.append(Tool(
+        name="Book Flights",
+        func=flight_booking_tool._run,
+        description="Books flights based on user preferences."
+    ))
+    
+    tools.append(Tool(
+        name="Book Hotels",
+        func=hotel_booking_tool._run,
+        description="Books hotels based on user preferences."
+    ))
+    
+    tools.append(Tool(
+        name="Get Itinerary",
+        func=itinerary_tool._run,
+        description="Generates a travel itinerary."
+    ))
+
+
+    
+    llm_agent = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+    intent_agent = initialize_agent(
+        tools=tools,
+        agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+        llm=llm_agent,
+        handle_parsing_errors=True,
+        agent_kwargs = booking_params
+    )
+
+    result_log = intent_agent.invoke(query, booking_params)
+    print(result_log)
+    
 
     # Display booking details
     if verbose:
