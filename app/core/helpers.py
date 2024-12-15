@@ -26,7 +26,7 @@ def extract_single_param_value_llm(param: str, input_value: str, extract_paramet
     Extract the value of the parameter '{param}' from the give user input.
 
     Extraction Guidelines:
-    1. Carefully analyze the user query to extract value of the parameter. Return only the value of the parameter without any additional information
+    1. Carefully analyze the user query to extract values for each parameter
     2. Match parameters exactly as specified in the function specification
     3. Use exact IATA codes for locations if possible. If city names are given, use the main airport code
     4. Use YYYY-MM-DD format for dates. If the year is not given, assume current year for the date.
@@ -377,11 +377,27 @@ def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hote
     chain = prompt | llm
     
     try:
-        response = chain.invoke({
+        if not flight_booking_result and not hotel_booking_result:
+            " \nTravel Plan:\n" + itinerary_result
+        elif not flight_booking_result:
+            response = chain.invoke({
+            "flight_booking_result": {},
+            "hotel_booking_result": json.dumps(hotel_booking_result),
+        })
+        elif not hotel_booking_result:
+            response = chain.invoke({
+            "flight_booking_result": json.dumps(flight_booking_result),
+            "hotel_booking_result": {},
+        })
+        else:
+            response = chain.invoke({
             "flight_booking_result": json.dumps(flight_booking_result),
             "hotel_booking_result": json.dumps(hotel_booking_result),
         })
-        complete_summary = response.content + " \nTravel Plan:\n" + itinerary_result
+        
+        complete_summary = response.content
+        if itinerary_result:
+            complete_summary+= " \nTravel Plan:\n" + itinerary_result
         
         if verbose:
             print(f"Human Readable Result: {complete_summary}")
@@ -389,4 +405,3 @@ def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hote
     except Exception as e:
         if verbose:
             print(f"Error converting to human-readable result: {e}")
-
