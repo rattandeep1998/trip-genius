@@ -390,3 +390,61 @@ def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hote
         if verbose:
             print(f"Error converting to human-readable result: {e}")
 
+def extract_missing_booking_parameters(
+    booking_params: Dict[str, Any],
+    extract_parameters_model: str,
+    verbose: bool = True
+):
+    llm_calls_count = 0
+
+    # Prepare the query with origin and destination location codes
+    query = f"""
+    Extract the destinationCountry, destinationCity, and originCurrencyCode from the following details:
+    - Destination Location Code: {booking_params.get('destinationLocationCode', '')}
+    - Origin Location Code: {booking_params.get('originLocationCode', '')}
+
+    Ensure the extraction is accurate and do not make up any information.
+    """
+
+    system_prompt = """
+    You are an expert at extracting structured parameters for a flight booking API function. Extract the values of the following parameters from the given details and return the response in JSON format:
+
+    Parameters:
+    - destinationCountry: The country corresponding to the destination location code. destinationCountry is in ISO 3166 Alpha-2 code format.
+    - destinationCity: The city corresponding to the destination location code.
+    - originCurrencyCode: The currency code corresponding to the origin location code.
+
+    Extraction Guidelines:
+    1. Use the destinationLocationCode to extract destinationCountry and destinationCity.
+    2. Use the originLocationCode to extract originCurrencyCode.
+    3. Do not make up any information; return null if unsure.
+    4. Ensure extracted values are accurate and compatible with the expected types.
+    """
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", "{query}")
+    ])
+
+    llm = ChatOpenAI(model=extract_parameters_model, temperature=0)
+    chain = prompt | llm
+
+    llm_calls_count += 1
+    response = chain.invoke({
+        "query": query
+    })
+
+    try:
+        extracted_params = json.loads(response.content)
+    except json.JSONDecodeError:
+        extracted_params = {}
+
+    for key in ['destinationCountry', 'destinationCity', 'originCurrencyCode']:
+        if booking_params.get(key) == '' and extracted_params.get(key) is not None:
+            booking_params[key] = extracted_params[key]
+
+    if verbose:
+        print(f"Extracted Missing Parameters: {json.dumps(extracted_params, indent=2)}")
+        print(f"Updated Booking Parameters: {json.dumps(booking_params, indent=2)}")
+
+    return booking_params, llm_calls_count
