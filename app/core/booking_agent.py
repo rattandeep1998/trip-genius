@@ -9,237 +9,22 @@ from langchain.tools import BaseTool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.utils.function_calling import convert_to_openai_function
-from helpers import get_parameter_description, extract_single_param_value_llm, extract_parameters_with_llm
+from helpers import extract_parameters_with_llm, extract_traveler_details, convert_to_human_readable_result
 
 extract_parameters_model = "gpt-3.5-turbo"
+# TODO - Where is this model used ?
 run_itinerary_model = "gpt-3.5-turbo"
 convert_to_human_results_model = "gpt-3.5-turbo"
 
 # Global counter for LLM calls
 llm_calls_count = 0
 
-class AmadeusFlightBookingTool(BaseTool):
+class FlightBookingTool(BaseTool):
     """Tool to retrieve and book flight offers from Amadeus API with dynamic traveler details."""
     
     name: str = "amadeus_flight_booking"
     description: str = "Books flight offers from the Amadeus API with dynamic traveler information."
 
-    def parse_extracted_details(self, traveler_details: Dict[str, Any], verbose: bool = True) -> Dict[str, Any]:
-        global llm_calls_count
-        system_prompt = """
-        You are an expert at extracting structured traveler details.
-        Parse and convert the traveler details values to the required format.
-
-        Extract the following details about a traveler:
-        1. Full Name (First and Last Name)
-        2. Date of Birth
-        3. Gender
-        4. Email Address
-        5. Phone Number
-        
-        Output Format (JSON):
-        {{
-            dateOfBirth: YYYY-MM-DD,
-            name: {{
-                firstName: FIRST_NAME,
-                lastName: LAST_NAME
-            }},
-            gender: MALE/FEMALE,
-            contact: {{
-                emailAddress: valid_email@example.com,
-                phones: [
-                    {{
-                        deviceType: MOBILE,
-                        countryCallingCode: COUNTRY_CODE,
-                        number: PHONE_NUMBER
-                    }}
-                ]
-            }}
-        }}
-        
-        Guidelines:
-        - Use uppercase for names
-        - Validate email format
-        - Format phone number without country code. Remove + or 00 from the country code
-        - Convert M/F to MALE/FEMALE for gender
-        - If country code is missing, default country code is 1
-        - If any detail is missing, leave it as is in the input
-        - Do not make up information
-        - The output should be in same format as input json
-        """
-        
-        llm = ChatOpenAI(model=extract_parameters_model, temperature=0)        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("human", "{traveler_input}")
-        ])
-        
-        chain = prompt | llm
-        traveler_details_str = json.dumps(traveler_details)
-
-        try:
-            llm_calls_count += 1
-
-            parsed_traveller_details = chain.invoke({"traveler_input": traveler_details_str})
-            parsed_traveller_details = json.loads(parsed_traveller_details.content)
-
-            if verbose:
-                print(f"Parsed Traveler Details: {json.dumps(parsed_traveller_details, indent=2)}")
-
-            return parsed_traveller_details
-        except Exception as e:
-            if verbose:
-                print(f"Error parsing traveler details: {e}")
-            return traveler_details
-
-    def extract_traveler_details(self, traveler_input: str = None, interactive_mode: bool = True, verbose: bool = True):
-        global llm_calls_count
-
-        system_prompt = """
-        You are an expert at extracting structured traveler details from natural language input.
-        
-        Extract the following details about a traveler:
-        1. Full Name (First and Last Name)
-        2. Date of Birth
-        3. Gender
-        4. Email Address
-        5. Phone Number
-        
-        Output Format (JSON):
-        {{
-            dateOfBirth: YYYY-MM-DD,
-            name: {{
-                firstName: FIRST_NAME,
-                lastName: LAST_NAME
-            }},
-            gender: MALE/FEMALE,
-            contact: {{
-                emailAddress: valid_email@example.com,
-                phones: [
-                    {{
-                        deviceType: MOBILE,
-                        countryCallingCode: COUNTRY_CODE,
-                        number: PHONE_NUMBER
-                    }}
-                ]
-            }}
-        }}
-        
-        Guidelines:
-        - Do not make up any information and default to null if unsure
-        - Use uppercase for names
-        - Validate email format
-        - Format phone number with country code if present
-        - Try to infer gender of the traveller from the input if not provided
-        - If any other detail is missing, return null for that field
-        """
-        
-        llm = ChatOpenAI(model=extract_parameters_model, temperature=0)        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("human", "{traveler_input}")
-        ])
-        
-        chain = prompt | llm
-        
-        extracted_details = {}
-        if traveler_input:
-            try:
-                if verbose:
-                    print(f"Traveller Details Input: {traveler_input}")
-                
-                llm_calls_count += 1
-                response = chain.invoke({"traveler_input": traveler_input})
-                extracted_details = json.loads(response.content)
-            except Exception as e:
-                extracted_details = {}
-                print(f"Error extracting traveler details: {e}")
-        
-        if verbose:
-            print(f"Extracted Traveler Details: {json.dumps(extracted_details, indent=2)}")
-
-        # If not is iterative mode and function is run on the entire dataset, then return the extracted parameters without asking for human input
-        if not interactive_mode:
-            return extracted_details
-        
-        # Interactive validation and completion
-        def validate_input(prompt_text, validator=None):
-            while True:
-                user_input = input(prompt_text).strip()
-                if validator is None or validator(user_input):
-                    return user_input
-        
-        # Validate and complete full name
-        if not extracted_details.get('name') or not all(extracted_details['name'].values()):
-            full_name = validate_input("Enter full name (First Last): ")
-            name_parts = full_name.split()
-            extracted_details['name'] = {
-                "firstName": name_parts[0].upper(),
-                "lastName": ' '.join(name_parts[1:]).upper()
-            }
-        
-        # Validate date of birth
-        if not extracted_details.get('dateOfBirth'):
-            dob = validate_input("Enter date of birth: ")
-            # The DOB will be parsed by the LLM call
-            extracted_details['dateOfBirth'] = dob
-
-            # while True:
-            #     dob = validate_input("Enter date of birth (YYYY-MM-DD): ")
-            #     try:
-            #         datetime.strptime(dob, "%Y-%m-%d")
-            #         extracted_details['dateOfBirth'] = dob
-            #         break
-            #     except ValueError:
-            #         print("Invalid date format. Use YYYY-MM-DD.")
-        
-        # Validate gender
-        if not extracted_details.get('gender'):
-            gender = validate_input("Enter gender: ")
-            extracted_details['gender'] = gender
-
-            # gender = validate_input(
-            #     "Enter gender (Male/Female): ", 
-            #     lambda g: g.upper() in ['MALE', 'FEMALE']
-            # ).upper()
-            # extracted_details['gender'] = gender
-        
-        # Validate email
-        if not extracted_details.get('contact') or not extracted_details['contact'].get('emailAddress'):
-            email = validate_input(
-                "Enter email address: ", 
-                lambda e: '@' in e and '.' in e
-            )
-
-            if not extracted_details.get('contact'):
-                extracted_details['contact'] = {}
-
-            extracted_details['contact']['emailAddress'] = email
-        
-        # Validate phone number
-        if not extracted_details['contact'].get('phones') or not extracted_details['contact']['phones'][0].get('number') or not extracted_details['contact']['phones'][0].get('countryCallingCode'):
-            phone = validate_input("Enter phone number (with country code): ")
-            
-            if len(phone) > 10:
-                country_code = ''.join(filter(str.isdigit, phone[:-10]))
-            else:
-                country_code = '1'  # Default country code
-            
-            number = ''.join(filter(str.isdigit, phone[-10:]))
-            
-            extracted_details['contact']['phones'] = [{
-                "deviceType": "MOBILE",
-                "countryCallingCode": country_code,
-                "number": number
-            }]
-        
-        if verbose:
-            print(f"Traveler details before parsing: {json.dumps(extracted_details, indent=2)}")
-        
-        extracted_details = self.parse_extracted_details(extracted_details, verbose)
-
-        return extracted_details
-    
     def _run(
         self, 
         originLocationCode: str, 
@@ -390,7 +175,13 @@ class AmadeusFlightBookingTool(BaseTool):
         order_data["_flight_api_success"] = flight_api_success
         return order_data
 
-    def _run_hotel_booking(
+class HotelBookingTool(BaseTool):
+    """Tool to retrieve and book hotel offers from Amadeus API."""
+    
+    name: str = "hotel_booking"
+    description: str = "Books hotel offers from the Amadeus API."
+
+    def _run(
         self,
         originLocationCode: str,
         destinationLocationCode: str,
@@ -561,7 +352,13 @@ class AmadeusFlightBookingTool(BaseTool):
         order_data["_hotel_api_success"] = hotel_api_success
         return order_data
 
-    def _run_itinerary(
+class ItinerarySuggestionTool(BaseTool):
+    """Tool to provide itinerary suggestions based on destination and travel preferences."""
+    
+    name: str = "itinerary_suggestion"
+    description: str = "Generates optimized travel itineraries."
+    
+    def _run(
         self,
         originLocationCode: str,
         destinationLocationCode: str,
@@ -642,9 +439,7 @@ class AmadeusFlightBookingTool(BaseTool):
                   print(f"error: {str(e)}, _itinerary_api_calls: {itinerary_api_calls}, _itinerary_api_success: {itinerary_api_success}")
             except requests.RequestException as e:
                print(f"error: {str(e)}, _itinerary_api_calls: {itinerary_api_calls}, _itinerary_api_success: {itinerary_api_success}")
-        # except requests.RequestException as e:
-        #   print(f"error: {str(e)}, _itinerary_api_calls: {itinerary_api_calls}, _itinerary_api_success: {itinerary_api_success}")
-            
+
             system_prompt = f"""
             You are an expert at planning trips in the most optimized way with best suggestions for the given city.
 
@@ -664,78 +459,43 @@ class AmadeusFlightBookingTool(BaseTool):
 
             query = f"Plan an optimized trip itinerary for {adults} adults in {destinationLocationCode} starting from {departureDate} to {returnDate} prioritizing user preference: {travelPlanPreference} in the plan."
             
-
-            # Initialize the LLM
             llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
 
-            # Create the prompt template
             prompt = ChatPromptTemplate.from_messages([
                 ("system", system_prompt),
                  ("human", "{query}")
-                 ])
+            ])
             
             chain = prompt | llm
             response = chain.invoke({
                 "query": query
             })
+
             itinerary = response.content
+
             return itinerary
         except Exception as e:
-          print(f"Error extracting itinerary: {e}")
+            print(f"Error extracting itinerary: {e}")
         return ""
-
-def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hotel_booking_result: Dict[str, Any], itinerary_result: str, verbose: bool = True):
-    global llm_calls_count
-
-    system_prompt = """
-    You are an expert at converting structured booking results into human-readable format.
-    You have the results from flight and hotel bookings.
-    Your task is to extract only the relevant details and output them in a concise format in a single sentence.
-    """
-        
-    llm = ChatOpenAI(model=convert_to_human_results_model, temperature=0)        
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "{flight_booking_result} {hotel_booking_result}")
-    ])
-        
-    chain = prompt | llm
-    
-    try:
-        # Invoke LLM
-        llm_calls_count += 1
-
-        response = chain.invoke({
-            "flight_booking_result": json.dumps(flight_booking_result),
-            "hotel_booking_result": json.dumps(hotel_booking_result),
-        })
-        complete_summary = response.content + " \nTravel Plan:\n" + itinerary_result
-        
-        if verbose:
-            print(f"Human Readable Result: {complete_summary}")
-        
-    except Exception as e:
-        if verbose:
-            print(f"Error converting to human-readable result: {e}")
-
 
 def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool = True, use_real_api: bool = True) -> Dict[str, Any]:
     global llm_calls_count
-    flight_tool = AmadeusFlightBookingTool()
-    flight_tool_openai = convert_to_openai_function(flight_tool)
+    flight_booking_tool = FlightBookingTool()
+    hotel_booking_tool = HotelBookingTool()
+    itinerary_tool = ItinerarySuggestionTool()
+
+    flight_tool_openai = convert_to_openai_function(flight_booking_tool)
 
     if verbose:
         print(f"Flight Tool OpenAI: {json.dumps(flight_tool_openai, indent=2)}")
 
-    flight_params, param_extractt_llm_calls_count = extract_parameters_with_llm(query, flight_tool_openai, extract_parameters_model, interactive_mode, verbose)
-    llm_calls_count += param_extractt_llm_calls_count
+    flight_params, param_extract_llm_calls_count = extract_parameters_with_llm(query, flight_tool_openai, extract_parameters_model, interactive_mode, verbose)
+    llm_calls_count += param_extract_llm_calls_count
 
-    if verbose: 
-        print(f"Flight Parameters: {json.dumps(flight_params, indent=2)}")
-    
     travelers_details = []
     
-    traveler_details = flight_tool.extract_traveler_details(query, interactive_mode, verbose)
+    traveler_details, traveler_extract_llm_calls = extract_traveler_details(extract_parameters_model, query, interactive_mode, verbose)
+    llm_calls_count += traveler_extract_llm_calls
     traveler_details['id'] = '1'
     travelers_details.append(traveler_details)
 
@@ -747,7 +507,8 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
                 break
             
             additional_traveler = input("Enter additional traveler details: ")
-            additional_traveler_details = flight_tool.extract_traveler_details(additional_traveler, interactive_mode, verbose)
+            additional_traveler_details, traveler_extract_llm_calls = extract_traveler_details(extract_parameters_model, additional_traveler, interactive_mode, verbose)
+            llm_calls_count += traveler_extract_llm_calls
             additional_traveler_details['id'] = str(len(travelers_details) + 1)
             travelers_details.append(additional_traveler_details)
 
@@ -759,15 +520,15 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
         'returnDate': flight_params.get('returnDate', ''),
         'adults': len(travelers_details),
         'max': flight_params.get('max', 5),
-        'travelers_details': travelers_details,
         'travelPlanPreference': flight_params.get('travelPlanPreference', ''),
         'country':  flight_params.get('country', ''),
         'city':  flight_params.get('city', ''),
-        'currencyCode':  flight_params.get('currencyCode', '')
+        'currencyCode':  flight_params.get('currencyCode', ''),
+        'travelers_details': travelers_details,
     }
     
     if verbose:
-        print("\nFlight Booking Parameters:")
+        print("\nBooking Parameters:")
         print(json.dumps(booking_params, indent=2))
     
     # Do not hit the real API when testing only the extracted parameters
@@ -779,9 +540,9 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
             "llm_calls": llm_calls_count
         }
     
-    flight_booking_result = flight_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
-    hotel_booking_result = flight_tool._run_hotel_booking(**booking_params, interactive_mode=interactive_mode)
-    itinerary_result = flight_tool._run_itinerary(**booking_params, verbose=verbose)
+    flight_booking_result = flight_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
+    hotel_booking_result = hotel_booking_tool._run(**booking_params, interactive_mode=interactive_mode)
+    itinerary_result = itinerary_tool._run(**booking_params, verbose=verbose)
 
     # Display booking details
     if verbose:
@@ -794,7 +555,8 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
         print("\Itinerary:")
         print(json.dumps(itinerary_result, indent=2))
 
-    convert_to_human_readable_result(flight_booking_result, hotel_booking_result, itinerary_result, verbose)
+    llm_calls_count += 1
+    convert_to_human_readable_result(flight_booking_result, hotel_booking_result, itinerary_result, convert_to_human_results_model, verbose)
 
     flight_api_calls = flight_booking_result.get("_flight_api_calls", 0)
     flight_api_success = flight_booking_result.get("_flight_api_success", 0)
