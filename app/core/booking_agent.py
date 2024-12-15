@@ -35,7 +35,7 @@ class FlightBookingTool(BaseTool):
         travelPlanPreference: str = "",
         destinationCountry:str = "",
         destionationCity: str = "",
-        sourceCurrencyCode: str = "",
+        originCurrencyCode: str = "",
         adults: int = 1,
         max: int = 5,
         verbose: bool = True,
@@ -80,8 +80,8 @@ class FlightBookingTool(BaseTool):
             'max': max,
         }
 
-        if sourceCurrencyCode:
-            params['sourceCurrencyCode'] = sourceCurrencyCode
+        if originCurrencyCode:
+            params['originCurrencyCode'] = originCurrencyCode
             
         flight_api_calls += 1
         try:
@@ -195,7 +195,7 @@ class HotelBookingTool(BaseTool):
         travelPlanPreference: str = "",
         destionationCountry:str = "",
         destionationCity: str = "",
-        sourceCurrencyCode: str = "",
+        originCurrencyCode: str = "",
         max: int = 5,
         interactive_mode: bool = True,
     ) -> Dict[str, Any]:
@@ -261,8 +261,8 @@ class HotelBookingTool(BaseTool):
             'bestRateOnly':True,
             'includeClosed':False,
         }
-        if sourceCurrencyCode:
-            params['currency'] = sourceCurrencyCode
+        if originCurrencyCode:
+            params['currency'] = originCurrencyCode
 
         hotel_api_calls += 1
         try:
@@ -373,7 +373,7 @@ class ItinerarySuggestionTool(BaseTool):
         travelPlanPreference: str = "",
         destinationCountry:str = "",
         destionationCity: str = "",
-        sourceCurrencyCode: str = "",
+        originCurrencyCode: str = "",
         max: int = 5,
         verbose: bool = True,
         interactive_mode: bool = True,
@@ -535,7 +535,7 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
         'travelPlanPreference': flight_params.get('travelPlanPreference', ''),
         'destinationCountry':  flight_params.get('destinationCountry', ''),
         'destionationCity':  flight_params.get('destionationCity', ''),
-        'sourceCurrencyCode':  flight_params.get('sourceCurrencyCode', ''),
+        'originCurrencyCode':  flight_params.get('originCurrencyCode', ''),
         'travelers_details': travelers_details,
     }
     
