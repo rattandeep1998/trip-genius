@@ -10,7 +10,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.utils.function_calling import convert_to_openai_function
 from helpers import extract_parameters_with_llm, extract_traveler_details, convert_to_human_readable_result
-from concurrent.futures import ThreadPoolExecutor
 
 extract_parameters_model = "gpt-3.5-turbo"
 # TODO - Where is this model used ?
@@ -588,34 +587,20 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
             "llm_calls": llm_calls_count
         }
     
-    
-    def flight_booking_tool_wrapper() -> Dict[str, Any]:
-        return flight_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode), {}, {}
-    
-    def hotels_booking_tool_wrapper() -> Dict[str, Any]:
-        return {}, hotel_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode), {}
-    
-    def itinerary_tool_wrapper() -> Dict[str, Any]:
-        return {}, {}, itinerary_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
-    
-    def trip_tool_wrapper() -> Dict[str, Any]:
-        flight_results = flight_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
-        hotel_resuls =  hotel_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
-        itinerary_results = itinerary_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
-        return flight_results, hotel_resuls, itinerary_results
-    
     llm_calls_count += 1
     user_intent = detect_intent(query)
 
     if 'flight' in user_intent:
-       flight_booking_result, hotel_booking_result, itinerary_result = flight_booking_tool_wrapper()
+       flight_booking_result, hotel_booking_result, itinerary_result = flight_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode), {}, {}
     elif 'hotel' in user_intent:
-        flight_booking_result, hotel_booking_result, itinerary_result = hotels_booking_tool_wrapper()
+        flight_booking_result, hotel_booking_result, itinerary_result = {}, hotel_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode), {}
     elif 'itinerary' in user_intent or 'plan' in user_intent:
-        flight_booking_result, hotel_booking_result, itinerary_result = itinerary_tool_wrapper()
-    else:
-        flight_booking_result, hotel_booking_result, itinerary_result = trip_tool_wrapper()
+        flight_booking_result, hotel_booking_result, itinerary_result = {}, {}, itinerary_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
 
+    else:
+        flight_booking_result = flight_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
+        hotel_booking_result = hotel_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
+        itinerary_result = itinerary_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
 
     # Display booking details
     if verbose:
