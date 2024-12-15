@@ -137,7 +137,7 @@ def extract_parameters_with_llm(
     for param in required_params:
         while param not in extracted_params:
             required_param_input = f"Please provide a value for '{param}' - {get_parameter_description(param)}: "
-            input_value = yield {"type": "prompt", "message": required_param_input}
+            input_value = yield {"type": "prompt", "text": required_param_input}
             # input_value = input(required_param_input)
             input_value = input_value.strip()
 
@@ -287,7 +287,7 @@ def extract_traveler_details(extract_parameters_model: str, traveler_input: str 
     # Interactive validation and completion
     def validate_input(prompt_text, validator=None):
         while True:
-            user_input = yield {"type": "prompt", "message": prompt_text}
+            user_input = yield {"type": "prompt", "text": prompt_text}
             # user_input = input(prompt_text)
             user_input = user_input.strip()
             

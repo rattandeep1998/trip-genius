@@ -3,10 +3,24 @@ from pydantic import BaseModel
 from app.core.booking_agent import initiate_bookings
 import uuid
 from typing import Optional
+from fastapi.middleware.cors import CORSMiddleware
 
 SESSIONS = {}
 
 app = FastAPI(title="Travel Booking Agent API")
+
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # Allows your React frontend to connect
+    allow_credentials=True,
+    allow_methods=["*"],    # Allows all methods (POST, GET, etc.)
+    allow_headers=["*"],    # Allows all headers
+)
 
 class BookingRequest(BaseModel):
     query: str
@@ -29,7 +43,9 @@ def initiate_bookings_endpoint(request: BookingRequest):
 
         try:
             response = next(result)
-            return {"session_id": session_id, "response": response}
+            type = response.get("type", "message")
+            text = response.get("text", "")
+            return {"session_id": session_id, "content": text, "type": type}
         except StopIteration as e:
             del SESSIONS[session_id]
             return {"session_id": session_id, "response": e.value, "done": True}
@@ -54,11 +70,18 @@ def continue_booking(request: ContinueBookingRequest):
     try:
         # Send user input to the generator and get the next yielded response
         response = function.send(user_input)
-        return {"session_id": session_id, "response": response}
+        type = response.get("type", "message")
+        text = response.get("text", "")
+        return {"session_id": session_id, "content": text, "type": type}
+        # return {"session_id": session_id, "response": response}
     except StopIteration as e:
         final_result = e.value
+
+        type = "message"
+        text = final_result.get("complete_summary", "")
+
         del SESSIONS[session_id]
-        return {"session_id": session_id, "response": final_result, "done": True}
+        return {"session_id": session_id, "type": type, "content": text, "done": True}
     except Exception as e:
         # Handle any other exceptions
         del SESSIONS[session_id]
