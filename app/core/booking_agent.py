@@ -119,7 +119,7 @@ class FlightBookingTool(BaseTool):
                 yield {"type": "message", "text": f"Flight {i + 1}: {flight_detail}"}
 
             preferred_flight_input = "Enter the number of your preferred flight to book(by default, it is the first cheapest flight): "
-            preferred_flight = yield {"type": "prompt", "message": preferred_flight_input}
+            preferred_flight = yield {"type": "prompt", "text": preferred_flight_input}
             # preferred_flight = input(preferred_flight_input)
 
             if not preferred_flight or not preferred_flight.isdigit() or int(preferred_flight) < 1 or int(preferred_flight) > len(flight_details):
@@ -295,7 +295,7 @@ class HotelBookingTool(BaseTool):
                 yield {"type": "message", "text": f"Hotel {idx}. {hotel['hotel']['name']} - {offer['price']['total']} {offer['price']['currency']} (Check-in: {offer['checkInDate']}, Check-out: {offer['checkOutDate']})"}
 
             preferred_hotel_input = "Enter the number of your preferred hotel to book(by default, it is the first cheapest hotel): "
-            preferred_hotel = yield {"type": "prompt", "message": preferred_hotel_input}
+            preferred_hotel = yield {"type": "prompt", "text": preferred_hotel_input}
             # preferred_hotel = input(preferred_hotel_input)
 
             if not preferred_hotel or not preferred_hotel.isdigit() or int(preferred_hotel) < 1 or int(preferred_hotel) > len(hotelOfferPriceData):
@@ -394,7 +394,7 @@ class ItinerarySuggestionTool(BaseTool):
         """
         if interactive_mode and not travelPlanPreference:
             itinerary_preference_message = "Provide any preference in itinerary: "
-            travelPlanPreference = yield {"type": "prompt", "message": itinerary_preference_message}
+            travelPlanPreference = yield {"type": "prompt", "text": itinerary_preference_message}
             # travelPlanPreference = input(itinerary_preference_message)
             
         if not travelPlanPreference:
@@ -528,7 +528,7 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
     if interactive_mode:
         while True:
             add_more_message = "Do you want to add another traveler? (yes/no): "
-            add_more = yield {"type": "prompt", "message": add_more_message}
+            add_more = yield {"type": "prompt", "text": add_more_message}
             # add_more = input(add_more_message)
 
             print(f"Add More: {add_more}")
@@ -537,7 +537,7 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
                 break
             
             additional_traveler_input_message = "Enter additional traveler details: "
-            additional_traveler = yield {"type": "prompt", "message": additional_traveler_input_message}
+            additional_traveler = yield {"type": "prompt", "text": additional_traveler_input_message}
             # additional_traveler = input(additional_traveler_input_message)
             
             additional_traveler_details, traveler_extract_llm_calls = yield from extract_traveler_details(extract_parameters_model, additional_traveler, interactive_mode, verbose)
@@ -588,10 +588,6 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
     flight_booking_result = yield from flight_booking_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
     hotel_booking_result = yield from hotel_booking_tool._run(**booking_params, interactive_mode=interactive_mode)
     itinerary_result = yield from itinerary_tool._run(**booking_params, verbose=verbose, interactive_mode=interactive_mode)
-
-    # flight_booking_result = list(flight_booking_result)
-    # hotel_booking_result = list(hotel_booking_result)
-    # itinerary_result = list(itinerary_result)
 
     # Display booking details
     if verbose:
