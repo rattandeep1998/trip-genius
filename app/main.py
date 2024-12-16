@@ -47,8 +47,13 @@ def initiate_bookings_endpoint(request: BookingRequest):
             text = response.get("text", "")
             return {"session_id": session_id, "content": text, "type": type}
         except StopIteration as e:
+            final_result = e.value
+
+            type = "message"
+            text = final_result.get("complete_summary", "")
+
             del SESSIONS[session_id]
-            return {"session_id": session_id, "response": e.value, "done": True}
+            return {"session_id": session_id, "type": type, "content": text, "done": True}
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -73,7 +78,6 @@ def continue_booking(request: ContinueBookingRequest):
         type = response.get("type", "message")
         text = response.get("text", "")
         return {"session_id": session_id, "content": text, "type": type}
-        # return {"session_id": session_id, "response": response}
     except StopIteration as e:
         final_result = e.value
 

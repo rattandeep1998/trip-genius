@@ -552,19 +552,22 @@ def detect_intent(query: str) -> str:
     Detect the user's intent from the query: 'book flights', 'book hotels', 'get itinerary', or 'book a trip.'
     """
 
-
     system_prompt = f"""
-    You are a travel assistant. Classify the user's query into one of the following intents:
-    - "book flights"
-    - "book hotels"
-    - "get itinerary or travel plan"
-    - "book a trip"
+    You are a travel assistant. Your task is to classify the user's query into one of the following intents:
+
+    - "book flights": If the user specifically mentions booking or reserving flights, purchasing plane tickets, or arranging air travel.
+    - "book hotels": If the user specifically mentions booking hotels, reserving accommodations, or finding a place to stay.
+    - "get itinerary or travel plan": If the user asks for a travel itinerary, a detailed plan, a schedule, or recommendations for their trip.
+    - "book a trip": If the user requests a full trip booking that includes multiple components like flights, hotels, and activities.
+
     Guidelines:
-    - return flight for booking flights
-    - return hotel for booking hotels
-    - return itinerary for retrieving itinerary or travel plan
-    - return trip
-    return a string with intent.
+    - Return "book flights" for queries related solely to flight bookings.
+    - Return "book hotels" for queries related solely to hotel bookings.
+    - Return "get itinerary or travel plan" for queries focused on creating or retrieving travel plans.
+    - Otherwise, return "book a trip" for general or multi-component trip bookings.
+
+    Output the intent as a single string.
+
     """
     llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
 
@@ -596,6 +599,10 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
 
     llm_calls_count += 1
     user_intent = detect_intent(query)
+
+    if verbose:
+        print(f"User Intent: {user_intent}")
+
     if 'itinerary' not in user_intent and 'plan' not in user_intent:
         travelers_details, traveler_extract_llm_calls = yield from extract_traveler_details(extract_parameters_model, query, interactive_mode, verbose)
         llm_calls_count += traveler_extract_llm_calls
