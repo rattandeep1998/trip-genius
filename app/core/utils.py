@@ -28,7 +28,7 @@ def compare_parameters(generated, baseline):
     
     for key, baseline_value in flat_baseline.items():
         generated_value = flat_generated.get(key, "Missing in generated")
-        if generated_value == baseline_value:
+        if str(generated_value).lower().strip() == str(baseline_value).lower().strip():
             matched_keys += 1
         else:
             mismatches.append((key, baseline_value, generated_value))

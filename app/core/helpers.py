@@ -401,7 +401,7 @@ def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hote
             "flight_booking_result": json.dumps(flight_booking_result),
             "hotel_booking_result": json.dumps(hotel_booking_result),
         })
-        complete_summary = response.content + " \nTravel Plan:\n" + itinerary_result
+        complete_summary = response.content + " \nTravel Plan:\n" + itinerary_result.get('travel_plan', '')
         
         if verbose:
             print(f"Human Readable Result: {complete_summary}")
