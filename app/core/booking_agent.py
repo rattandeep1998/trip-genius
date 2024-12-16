@@ -738,8 +738,8 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
     hotel_api_calls = hotel_booking_result.get("_hotel_api_calls", 0)
     hotel_api_success = hotel_booking_result.get("_hotel_api_success", 0)
 
-    itinerary_api_calls = hotel_booking_result.get("_itinerary_api_calls", 0)
-    itinerary_api_success = hotel_booking_result.get("_itinerary_api_success", 0)
+    itinerary_api_calls = itinerary_result.get("_itinerary_api_calls", 0)
+    itinerary_api_success = itinerary_result.get("_itinerary_api_success", 0)
 
     return {
         "booking_params": booking_params,

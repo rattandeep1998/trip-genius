@@ -150,7 +150,7 @@ dataset = [
         "destinationLocationCode": "NRT",
         "departureDate": "2025-02-14",
         "returnDate": "2025-02-28",
-        "adults": 1,
+        "adults": 0,
         "max": 5,
         "travelers_details": []
         },
@@ -158,9 +158,9 @@ dataset = [
     },
     #Trip Booking
     {
-    "input": "Plan a solo trip to Bali for 7 days starting from March 10, 2025. I want to explore beaches, try local cuisine, and visit cultural landmarks. My name is Anya Kapoor, and my contact email is anya.kapoor@gmail.com, 3121234567",
+    "input": "Plan a solo trip to Bali from New York for 7 days starting from March 10, 2025. I want to explore beaches, try local cuisine, and visit cultural landmarks. My name is Anya Kapoor, born on Feb 7 2005 and my contact email is anya.kapoor@gmail.com, 3121234567",
     "parameters": {
-        "originLocationCode": "",
+        "originLocationCode": "JFK",
         "destinationLocationCode": "DPS",
         "departureDate": "2025-03-10",
         "returnDate": "2025-03-17",
@@ -169,7 +169,7 @@ dataset = [
         "max": 5,
         "travelers_details": [
             {
-                "dateOfBirth": "",
+                "dateOfBirth": "2005-02-07",
                 "name": {"firstName": "Anya", "lastName": "Kapoor"},
                 "gender": "FEMALE",
                 "contact": {
@@ -184,13 +184,13 @@ dataset = [
     },
     #Group Trip Booking
     {
-    "input": "Plan a trip for my family of 4 (2 adults and 2 children, ages 5 and 8). Departure from Sydney to Singapore on April 5, 2025, and return on April 12, 2025. The adults are John Doe (born June 12, 1980) and Jane Doe (born August 30, 1982). The children are Bobby Joe(born June 12, 1980) and Sherly Doe (born August 30, 1982) .email: john.doe@email.com, phone:5121234567",
+    "input": "Plan a trip for my family of 4 (2 adults and 2 children, ages 5 and 8). Departure from Sydney to Singapore on April 5, 2025, and return on April 12, 2025. The adults are John Doe (born June 12, 1980) and Jane Doe (born August 30, 1982). The children are Bobby Joe(born June 12, 2005) and Sherly Doe (born August 30, 2006) .email: john.doe@email.com, phone:5121234567",
     "parameters": {
         "originLocationCode": "SYD",
         "destinationLocationCode": "SIN",
         "departureDate": "2025-04-05",
         "returnDate": "2025-04-12",
-        "adults": 2,
+        "adults": 4,
         "max": 5,
         "travelers_details": [
             {
@@ -214,7 +214,7 @@ dataset = [
                 "id": "2"
             },
             {
-                "dateOfBirth": "",
+                "dateOfBirth": "2005-06-12",
                 "name": {"firstName": "Bobby", "lastName": "Doe"},
                 "gender": "MALE",
                "contact": {
@@ -224,7 +224,7 @@ dataset = [
                 "id": "3"
             },
             {
-                "dateOfBirth": "",
+                "dateOfBirth": "2006-08-30",
                 "name": {"firstName": "Sherly", "lastName": "Doe"},
                 "gender": "FEMALE",
                 "contact": {
