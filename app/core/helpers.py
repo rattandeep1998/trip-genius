@@ -19,25 +19,49 @@ def get_parameter_description(param: str) -> str:
     
     return descriptions.get(param, 'No description available')
 
-def extract_single_param_value_llm(param: str, input_value: str, extract_parameters_model: str, verbose: bool = True) -> str:
+def extract_single_param_value_llm(param: str, param_description: str, input_value: str, extract_parameters_model: str, verbose: bool = True) -> str:
     system_prompt = f"""
     You are an expert at extracting structured parameters for a flight booking API function.
 
-    Extract the value of the parameter '{param}' from the give user input.
+    **Task**: Extract the value of the parameter '{param}' from the given user input.
+    **Parameter Description**: {param_description}
 
-    Extraction Guidelines:
-    1. Carefully analyze the user query to extract value of the parameter. Return only the value of the parameter without any additional information
-    2. Match parameters exactly as specified in the function specification
-    3. Use exact IATA codes for locations if possible. If city names are given, use the main airport code
-    4. Use YYYY-MM-DD format for dates. If the year is not given, assume current year for the date.
-    5. If travel plan preference is not detected or not provided, return the value as tourism
+    ### Extraction Guidelines:
+    1. **Location Extraction**:
+    - For location-related inputs (origin or destination), extract the **IATA airport code** (e.g., JFK, LHR).
+    - If the exact IATA code is not specified, infer the closest major airport IATA code.
+    - Only return the 3-letter IATA code. Do not include any additional text.
 
-    Output Instructions:
-    - Return a valid string with extracted parameter value
-    - Ensure type compatibility
-    - If unsure about a parameter, return empty string
+    2. **Date Format**:
+    - For date inputs, use the **YYYY-MM-DD** format.
+    - If the year is not mentioned, assume the current year.
+
+    3. **Default Values**:
+    - If the travel preference parameter is missing, return `'tourism'`.
+
+    4. **Strict Matching**:
+    - Match the parameter exactly as described in the function specification.
+
+    5. **Edge Cases**:
+    - If the input is unclear or contains multiple locations, choose the most relevant one.
+    - If unsure about the parameter, return null.
+
+    ### Examples:
+    - **Input**: "New York"  
+    **Output**: "JFK"
+
+    - **Input**: "Tokyo"  
+    **Output**: "HND"
+
+    - **Input**: "March 15th 2024"  
+    **Output**: "2024-03-15"
+
+    ### Output Instructions:
+    - Return **only** the extracted parameter value as a string.
+    - Ensure the type is compatible with the expected parameter.
+    - If extraction is not possible, return ''.
     """
-
+    
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
         ("human", "{input_value}")
@@ -136,14 +160,23 @@ def extract_parameters_with_llm(
 
     for param in required_params:
         while param not in extracted_params:
-            required_param_input = f"Please provide a value for '{param}' - {get_parameter_description(param)}: "
+            param_description = get_parameter_description(param)
+            required_param_input = f"Please provide a value for '{param}' - {param_description}: "
             input_value = yield {"type": "prompt", "text": required_param_input}
             # input_value = input(required_param_input)
             input_value = input_value.strip()
 
             llm_calls_count += 1
             
-            extracted_params[param] = extract_single_param_value_llm(param, input_value, extract_parameters_model, verbose)
+            extracted_param_value = extract_single_param_value_llm(param, param_description, input_value, extract_parameters_model, verbose)
+            
+            if extracted_param_value is None or extracted_param_value == "''":
+                debug_message = f"Extraction failed for parameter '{param}'. Please provide a valid value."
+                print(debug_message)
+                yield {"type": "message", "text": debug_message}
+                continue
+
+            extracted_params[param] = extracted_param_value
             #print(f"'{param}' is a required parameter. Please provide a value.")
 
     return extracted_params, llm_calls_count   
