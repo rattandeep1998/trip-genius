@@ -2,7 +2,52 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from typing import Dict, Any, List
 import json
+from datetime import datetime
 
+def is_valid_date(date_str):
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        return None
+
+def validate_individual_dates(extracted_params):
+    current_date = datetime.now().date()
+    
+    # Validate departure date
+    if 'departureDate' in extracted_params:
+        departure_date_str = extracted_params.get('departureDate')
+        departure_date = is_valid_date(departure_date_str)
+        if departure_date and departure_date < current_date:
+            debug_message = "Error: 'departureDate' cannot be in the past."
+            print(debug_message)
+            yield {"type": "message", "text": debug_message}
+            extracted_params.pop('departureDate', None)
+    
+    # Validate return date
+    if 'returnDate' in extracted_params:
+        return_date_str = extracted_params.get('returnDate')
+        return_date = is_valid_date(return_date_str)
+        if return_date and return_date < current_date:
+            debug_message = "Error: 'returnDate' cannot be in the past."
+            print(debug_message)
+            yield {"type": "message", "text": debug_message}
+            extracted_params.pop('returnDate', None)
+
+def validate_relative_dates(extracted_params):
+    departure_date_str = extracted_params.get('departureDate')
+    return_date_str = extracted_params.get('returnDate')
+    
+    if departure_date_str and return_date_str:
+        departure_date = is_valid_date(departure_date_str)
+        return_date = is_valid_date(return_date_str)
+        
+        if departure_date and return_date and return_date <= departure_date:
+            debug_message = "Error: 'returnDate' must be later than 'departureDate'."
+            print(debug_message)
+            yield {"type": "message", "text": debug_message}
+            extracted_params.pop('departureDate', None)
+            extracted_params.pop('returnDate', None)
+    
 def get_parameter_description(param: str) -> str:
     descriptions = {
         'originLocationCode': 'City/airport IATA code from which the traveler will depart (e.g., JFK for New York)',
@@ -158,7 +203,16 @@ def extract_parameters_with_llm(
 
     required_params = function_spec['parameters'].get('required', [])
 
+    print(f"Required Parameters: {required_params}")
+
+    current_date = datetime.now().date()
+
     for param in required_params:
+        if param in ['departureDate', 'returnDate']:
+            yield from validate_individual_dates(extracted_params)
+            if 'departureDate' in extracted_params and 'returnDate' in extracted_params:
+                    yield from validate_relative_dates(extracted_params)
+                    
         while param not in extracted_params:
             param_description = get_parameter_description(param)
             required_param_input = f"Please provide a value for '{param}' - {param_description}: "
@@ -177,7 +231,11 @@ def extract_parameters_with_llm(
                 continue
 
             extracted_params[param] = extracted_param_value
-            #print(f"'{param}' is a required parameter. Please provide a value.")
+
+            if param in ['departureDate', 'returnDate']:
+                yield from validate_individual_dates(extracted_params)
+                if 'departureDate' in extracted_params and 'returnDate' in extracted_params:
+                    yield from validate_relative_dates(extracted_params)
 
     return extracted_params, llm_calls_count   
 
