@@ -510,7 +510,7 @@ class ItinerarySuggestionTool(BaseTool):
             - Activities
             - Optimized travel plan
 
-            Return the valid JSON of the entire itinerary as a paragraph as a field optimized_travel_plan with detailed 
+            Return the the entire itinerary as a paragraph as a string with detailed 
             day wise plan incorporating all the guidelines.
             """
 
