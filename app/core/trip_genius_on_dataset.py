@@ -19,6 +19,8 @@ def process_bookings(input_csv, output_csv, short_dataset=False):
     flight_api_success = 0
     hotel_api_calls = 0
     hotel_api_success = 0
+    itinerary_api_calls = 0
+    itinerary_api_success = 0
     llm_calls_count = 0
     total_time = 0
     
@@ -59,6 +61,8 @@ def process_bookings(input_csv, output_csv, short_dataset=False):
         flight_api_success += results_dict.get('flight_api_success', 0)
         hotel_api_calls += results_dict.get('hotel_api_calls', 0)
         hotel_api_success += results_dict.get('hotel_api_success', 0)
+        itinerary_api_calls += results_dict.get('itinerary_api_calls', 0)
+        itinerary_api_success += results_dict.get('itinerary_api_calls', 0)
         llm_calls_count += results_dict.get('llm_calls', 0)
         
         # Compare the generated parameters with the baseline parameters
@@ -93,6 +97,8 @@ def process_bookings(input_csv, output_csv, short_dataset=False):
     print(f"Successful Flight API Calls: {flight_api_success}")
     print(f"Total Hotel API Calls: {hotel_api_calls}")
     print(f"Successful Hotel API Calls: {hotel_api_success}")
+    print(f"Total Itinerary API Calls: {itinerary_api_calls}")
+    print(f"Successful Itinerary API Calls: {itinerary_api_success}")
     print(f"Total LLM Calls: {llm_calls_count}")
     print(f"Average Execution Time: {average_execution_time:.2f} seconds")
 
