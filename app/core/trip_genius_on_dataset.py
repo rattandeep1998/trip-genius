@@ -98,7 +98,7 @@ def process_bookings(input_csv, output_csv, short_dataset=False):
     
     # Calculate and display the overall match percentage and average execution time
     overall_match_percentage = total_match_percentage / total_entries if total_entries > 0 else 0
-    overall_intent_match_percentage = total_intent_match_percentage / total_entries if total_entries > 0 else 0
+    overall_intent_match_percentage = (total_intent_match_percentage / total_entries)*100 if total_entries > 0 else 0
     average_execution_time = total_time / total_entries if total_entries > 0 else 0
     print(f"Overall Match Percentage: {overall_match_percentage:.2f}%")
     print(f"Overall Intent Match Percentage: {overall_intent_match_percentage:.2f}%")
@@ -113,12 +113,12 @@ def process_bookings(input_csv, output_csv, short_dataset=False):
 
 # Example usage
 if __name__ == "__main__":
-    #input_csv_path = "./data/travel_booking_dataset_1.csv"
-    #output_csv_path = "./data/booking_results_1.csv"
+    input_csv_path = "./data/travel_booking_dataset_1.csv"
+    output_csv_path = "./data/booking_results_final.csv"
 
-    input_csv_path = "./data/travel_booking_dataset_short.csv"
-    output_csv_path = "./data/booking_results_short.csv"
+    #input_csv_path = "./data/travel_booking_dataset_short.csv"
+    #output_csv_path = "./data/booking_results_short.csv"
     
-    process_bookings(input_csv_path, output_csv_path, short_dataset=True)
+    process_bookings(input_csv_path, output_csv_path)
 
     # results_dict = initiate_bookings(input_text, interactive_mode=False, verbose=False, use_real_api = True)
