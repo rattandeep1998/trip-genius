@@ -753,5 +753,6 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
         "itinerary_api_calls": itinerary_api_calls,
         "itinerary_api_success": itinerary_api_success,
         "llm_calls": llm_calls_count,
-        "complete_summary": complete_summary
+        "complete_summary": complete_summary,
+        "intent": user_intent
     }
