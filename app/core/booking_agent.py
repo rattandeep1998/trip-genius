@@ -596,8 +596,7 @@ def initiate_bookings(query: str, interactive_mode: bool = True, verbose: bool =
 
     llm_calls_count += 1
     user_intent = detect_intent(query)
-    if 'itinerary' not in user_intent and 'plan' not in user_intent:   
-        print('plan' not in user_intent) 
+    if 'itinerary' not in user_intent and 'plan' not in user_intent:
         travelers_details, traveler_extract_llm_calls = yield from extract_traveler_details(extract_parameters_model, query, interactive_mode, verbose)
         llm_calls_count += traveler_extract_llm_calls
         id = 1
