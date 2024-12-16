@@ -438,6 +438,9 @@ def convert_to_human_readable_result(flight_booking_result: Dict[str, Any], hote
         # If travel_plan is not present in the itinerary result
         if 'travel_plan' not in itinerary_result:
             complete_summary = response.content
+        # If flight_booking_result empty json object and hotel_booking_result empty json object
+        elif not flight_booking_result and not hotel_booking_result:
+            complete_summary = " \nTravel Plan:\n" + itinerary_result.get('travel_plan', '')
         else:
             complete_summary = response.content + " \nTravel Plan:\n" + itinerary_result.get('travel_plan', '')
         
