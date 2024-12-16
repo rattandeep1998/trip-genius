@@ -23,10 +23,12 @@ def process_bookings(input_csv, output_csv, short_dataset=False):
     itinerary_api_success = 0
     llm_calls_count = 0
     total_time = 0
+    total_intent_match_percentage = 0
     
     for index, row in df.iterrows():
         input_text = row['Input']
         baseline_params = json.loads(row['Parameters'])
+        baseline_intent = row['Intent']
         
         # Measure the time taken to run the initiate_bookings function
         start_time = time.time()
@@ -68,7 +70,10 @@ def process_bookings(input_csv, output_csv, short_dataset=False):
         # Compare the generated parameters with the baseline parameters
         match_percentage = compare_parameters(generated_params, baseline_params)
         total_match_percentage += match_percentage
-        
+
+        if baseline_intent.lower().strip() in results_dict.get('intent', "").lower().strip():
+            total_intent_match_percentage+=1
+
         # Store the results for each entry
         results.append({
             "Input": input_text,
@@ -80,7 +85,9 @@ def process_bookings(input_csv, output_csv, short_dataset=False):
             "Hotel API Calls": results_dict.get('hotel_api_calls', 0),
             "Hotel API Success": results_dict.get('hotel_api_success', 0),
             "LLM Calls": results_dict.get('llm_calls', 0),
-            "Execution Time (s)": f"{execution_time:.2f}"
+            "Execution Time (s)": f"{execution_time:.2f}",
+            "Baseline Intent": baseline_intent,
+            "Generated Intent": results_dict.get('intent', ""),
         })
     
     # Create a DataFrame with the results
@@ -91,8 +98,10 @@ def process_bookings(input_csv, output_csv, short_dataset=False):
     
     # Calculate and display the overall match percentage and average execution time
     overall_match_percentage = total_match_percentage / total_entries if total_entries > 0 else 0
+    overall_intent_match_percentage = total_intent_match_percentage / total_entries if total_entries > 0 else 0
     average_execution_time = total_time / total_entries if total_entries > 0 else 0
     print(f"Overall Match Percentage: {overall_match_percentage:.2f}%")
+    print(f"Overall Intent Match Percentage: {overall_intent_match_percentage:.2f}%")
     print(f"Total Flight API Calls: {flight_api_calls}")
     print(f"Successful Flight API Calls: {flight_api_success}")
     print(f"Total Hotel API Calls: {hotel_api_calls}")
@@ -104,8 +113,8 @@ def process_bookings(input_csv, output_csv, short_dataset=False):
 
 # Example usage
 if __name__ == "__main__":
-    # input_csv_path = "../../data/travel_booking_dataset.csv"
-    # output_csv_path = "../../data/booking_results.csv"
+    #input_csv_path = "./data/travel_booking_dataset_1.csv"
+    #output_csv_path = "./data/booking_results_1.csv"
 
     input_csv_path = "./data/travel_booking_dataset_short.csv"
     output_csv_path = "./data/booking_results_short.csv"
