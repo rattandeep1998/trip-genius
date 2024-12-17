@@ -24,7 +24,6 @@ These tools are automatically invoked based on the user's intent, detected using
 
 The FlightBooking Tool handles the booking of flights based on user preferences, such as origin, destination, dates, and number of travelers.
 
-Key Features:
 - Interacts with the Amadeus API to fetch real-time flight offers.
 - Extracts user details like names, birthdates, and contact information.
 - Presents multiple flight options and allows the user to choose the preferred one.
@@ -34,7 +33,6 @@ Key Features:
 
 The HotelBooking Tool handles hotel bookings by querying the Amadeus API for available accommodations in a specified destination and date range.
 
-Key Features:
 - Searches for hotels based on destination and check-in/check-out dates.
 - Allows the user to choose from a list of available hotels.
 - Manages booking confirmations with traveler details.
@@ -44,7 +42,6 @@ Key Features:
 
 The ItinerarySuggestions Tool creates optimized travel itineraries based on user preferences and destination details.
 
-Key Features:
 - Uses clustering (K-Means) and graph algorithms (TSP) to optimize the sequence of attractions.
 - Suggests top restaurants, tourist attractions, and activities.
 - Integrates data from APIs like Amadeus, Google Places and TripAdvisor.
@@ -54,7 +51,7 @@ Key Features:
 
 Trip Genius uses a two-step process to determine and trigger the appropriate tool based on user input:
 
-#### Intent Detection:
+#### 1. Intent Detection:
 
 User inputs are processed by an LLM-based Intent Classification Model. The model classifies the intent into one of the following categories:
 
@@ -63,26 +60,26 @@ User inputs are processed by an LLM-based Intent Classification Model. The model
 - "get itinerary": Triggers the ItinerarySuggestionTool.
 - "book a trip": Triggers all three tools in sequence.
 
-#### Dynamic Tool Invocation:
+#### 2. Dynamic Tool Invocation:
 
 Based on the detected intent, the corresponding tool is invoked. The tools interact with the user to gather additional details if necessary and then proceed with booking or itinerary generation.
 
 ### Additional Features
 
-#### Function Calling Framework
+#### 1. Function Calling Framework
 The Function Calling Framework in Trip Genius leverages OpenAI's function-calling capabilities and the LangChain framework to convert user inputs into structured API calls. This allows the system to:
 
 - Automatically identify the parameters required for API calls.
 - Convert natural language queries into JSON payloads suitable for APIs.
 - Dynamically invoke the appropriate tool (FlightBooking, HotelBooking, or ItinerarySuggestions) based on user intent.
 
-#### Multilingual Support
+#### 2. Multilingual Support
 Trip Genius supports multiple languages, making it accessible to a diverse user base. The system can:
 - Understand user queries in various languages (e.g., English, Hindi, French).
 - Generate booking confirmations, itineraries, and error messages in the user's preferred language.
 - Utilize language models like GPT-3.5-turbo for multilingual understanding and generation.
 
-#### Error Handling and Fallback Mechanisms
+#### 3. Error Handling and Fallback Mechanisms
 Trip Genius incorporates robust error handling and fallback mechanisms to ensure service continuity even when issues arise:
 - API Failures: Handles cases where the Amadeus API is down or returns an error.
 - Missing Data: Asks the user for missing parameters if essential details are not provided.
@@ -241,9 +238,7 @@ The system identifies intent to book hotels even when not explicitly stated.
 ![Implicit Hotel Booking](./assets/scenario_3_1.png)
 ![Implicit Hotel Booking](./assets/scenario_3_2.png)
 
-The above examples demonstrate how **Trip Genius** provides a seamless and intelligent solution for travel planning. From booking flights and hotels to generating optimized itineraries, the application offers a robust and user-friendly experience for individual and multi-traveler scenarios.
-
-For a hands-on demonstration, refer to the **screen recordings** and explore the various features of Trip Genius in action.
+The above examples demonstrate how **Trip Genius** provides a seamless and intelligent solution for travel planning. From booking flights and hotels to generating optimized itineraries, the application offers a robust and user-friendly experience for individual and multi-traveler scenarios. For a hands-on demonstration, refer to the **screen recordings** and explore the various features of Trip Genius in action.
 
 ## Summary
 
