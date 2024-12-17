@@ -12,7 +12,6 @@ from langchain_core.utils.function_calling import convert_to_openai_function
 from app.core.helpers import extract_parameters_with_llm, extract_traveler_details, convert_to_human_readable_result, extract_missing_booking_parameters
 
 extract_parameters_model = "gpt-3.5-turbo"
-# TODO - Where is this model used ?
 run_itinerary_model = "gpt-3.5-turbo"
 convert_to_human_results_model = "gpt-3.5-turbo"
 

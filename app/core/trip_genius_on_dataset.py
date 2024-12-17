@@ -114,11 +114,9 @@ def process_bookings(input_csv, output_csv, short_dataset=False):
 # Example usage
 if __name__ == "__main__":
     input_csv_path = "./data/travel_booking_dataset_1.csv"
-    output_csv_path = "./data/booking_results_final.csv"
+    output_csv_path = "./data/booking_results_4o.csv"
 
     #input_csv_path = "./data/travel_booking_dataset_short.csv"
     #output_csv_path = "./data/booking_results_short.csv"
     
     process_bookings(input_csv_path, output_csv_path)
-
-    # results_dict = initiate_bookings(input_text, interactive_mode=False, verbose=False, use_real_api = True)
